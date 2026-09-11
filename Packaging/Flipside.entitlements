@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+    Deliberately empty: no com.apple.security.app-sandbox entitlement.
+    Sandboxed apps cannot use the Accessibility API to control other
+    applications (spec §11) — sandboxing is incompatible with Flipside's
+    core feature, so this file must never gain that key.
+    -->
+</dict>
+</plist>
