@@ -15,10 +15,28 @@ private final class WindowOverlay {
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
         self.lastFrame = trackedWindow.frame
-        card.setFrame(trackedWindow.frame)
-        badge.reposition(toCornerOf: trackedWindow.frame)
-        card.textView.string = note.body
+        applyFrame(trackedWindow.frame)
+        card.setTitle(Self.cardTitle(for: trackedWindow))
+        card.setBody(note.body)
         setMinimized(trackedWindow.isMinimized)
+    }
+
+    static func cardTitle(for window: TrackedWindow) -> String {
+        guard let title = window.title, !title.isEmpty else { return window.appName }
+        return "\(window.appName) — \(title)"
+    }
+
+    private func applyFrame(_ frame: CGRect) {
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        guard let usableFrame = CardFrameSanitizer.sanitized(frame, visibleScreenFrames: screens) else {
+            // Degenerate or offscreen window (AX reports plenty of these):
+            // nothing sensible to attach an overlay to.
+            badge.hide()
+            card.hide()
+            return
+        }
+        card.setFrame(usableFrame)
+        badge.reposition(toCornerOf: usableFrame)
     }
 
     /// No-ops when the frame hasn't actually changed. `syncOverlays()` calls
@@ -31,8 +49,7 @@ private final class WindowOverlay {
     func updateFrame(_ frame: CGRect) {
         guard frame != lastFrame else { return }
         lastFrame = frame
-        badge.reposition(toCornerOf: frame)
-        card.setFrame(frame)
+        applyFrame(frame)
     }
 
     /// Open Questions §12 item 2 (Task 22): minimized windows hide their
@@ -95,6 +112,9 @@ public final class OverlayCoordinator {
                 let note = resolveOrCreateNote(for: window)
                 let overlay = WindowOverlay(trackedWindow: window, note: note)
                 overlay.badge.onBadgeClicked = { [weak self] in self?.toggleFlip(for: element) }
+                // The card covers the whole tracked window, badge included,
+                // so it must also be dismissible from itself.
+                overlay.card.onClose = { [weak self] in self?.flipBackIfNeeded(for: element) }
                 overlaysByWindow[element] = overlay
             }
         }
@@ -119,8 +139,13 @@ public final class OverlayCoordinator {
         case .back:
             overlay.card.show()
             animateFlip(overlay.card.window, swapContent: {
-                overlay.card.textView.string = overlay.note.body
-            }, completion: nil)
+                overlay.card.setBody(overlay.note.body)
+            }, completion: {
+                // Keep the badge above the card: the card spans the whole
+                // tracked window, so without this the badge that triggered
+                // the flip ends up buried underneath it.
+                overlay.badge.show()
+            })
         case .front:
             animateFlip(overlay.card.window, swapContent: { [weak self] in
                 overlay.note.body = overlay.card.textView.string
@@ -129,6 +154,14 @@ public final class OverlayCoordinator {
                 overlay?.card.hide()
             })
         }
+    }
+
+    /// Flips a card back to the front if it's currently showing. Used by the
+    /// card's own Done button / Escape key, which must not toggle a card
+    /// that's already front-facing.
+    private func flipBackIfNeeded(for element: AXUIElement) {
+        guard let overlay = overlaysByWindow[element], overlay.stateMachine.state == .back else { return }
+        toggleFlip(for: element)
     }
 
     // MARK: - Persistence (Task 18)
