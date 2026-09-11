@@ -52,9 +52,9 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md). Each 
 
 ## Phase 5 — Packaging
 
-- [ ] Task 24 — Signing & entitlements audit (Developer ID, no sandbox key)
-- [ ] Task 25 — Notarization script
-- [ ] Task 26 — DMG build script
+- [~] Task 24 — Signing & entitlements audit — `scripts/make_app_bundle.sh` verified: assembles a real self-contained `.app` (bundled `libsqlcipher.dylib`, `@rpath` rewritten and confirmed via `otool -L`/`otool -l`), entitlements file has no sandbox key; actual `codesign` with a Developer ID identity needs credentials not available here
+- [~] Task 25 — Notarization script — written (`scripts/notarize.sh`), not executed; requires the user's own Apple Developer ID certificate + notarytool credentials
+- [x] Task 26 — DMG build script — `scripts/build_dmg.sh` run end-to-end against a built bundle; `hdiutil verify` passed
 
 ## Known gaps requiring the user / a live macOS GUI session
 
