@@ -19,34 +19,34 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md). Each 
 
 - [x] Task 1 — Project scaffolding (menu-bar app shell, `Info.plist`, no-sandbox entitlements) — `swift build` passes
 - [~] Task 2 — Accessibility permission flow — implemented and compiles; the actual OS permission prompt needs an interactive GUI session to verify
-- [ ] Task 3 — `TrackedWindow` + `WindowRegistry` (pure logic, unit tested)
-- [ ] Task 4 — `AXWindowReader` + `WindowTracker` live enumeration
-- [ ] Task 5 — AXObserver + NSWorkspace live notifications (move/resize/destroy/miniaturize, launch/terminate)
-- [ ] Task 6 — Badge overlay window (corner-pinned, repositions, tears down on close)
-- [ ] Task 7 — Accessibility Inspector audit across target apps (investigation, produces findings table)
+- [x] Task 3 — `TrackedWindow` + `WindowRegistry` (pure logic, unit tested) — 7/7 tests passing
+- [~] Task 4 — `AXWindowReader` + `WindowTracker` live enumeration — implemented, compiles; reading real AX attributes needs a live GUI session to verify (not unit-testable — no fake `AXUIElement`)
+- [~] Task 5 — AXObserver + NSWorkspace live notifications (move/resize/destroy/miniaturize, launch/terminate) — implemented, compiles; needs live verification
+- [~] Task 6 — Badge overlay window (corner-pinned, repositions, tears down on close) — implemented, compiles; visual behavior needs live verification
+- [ ] Task 7 — Accessibility Inspector audit across target apps (investigation, produces findings table) — not started, needs a human at the machine
 
 ## Phase 2 — Flip + Notes
 
-- [ ] Task 8 — Card overlay window (full-size, matches tracked frame)
-- [ ] Task 9 — `FlipTransform` — pure `CATransform3D` math (unit tested)
-- [ ] Task 10 — `FlipStateMachine` — pure front/back state (unit tested)
-- [ ] Task 11 — Wire badge click → flip → card show/hide; in-memory note store
+- [~] Task 8 — Card overlay window (full-size, matches tracked frame) — implemented, compiles; needs live verification
+- [x] Task 9 — `FlipTransform` — pure `CATransform3D` math (unit tested) — 3/3 tests passing
+- [x] Task 10 — `FlipStateMachine` — pure front/back state (unit tested) — 2/2 tests passing
+- [~] Task 11 — Wire badge click → flip → card show/hide; in-memory note store — `OverlayCoordinator` implemented and wired into `main.swift`, compiles; the actual animation/click flow needs a live GUI session to verify
 
 ## Phase 3 — Persistence
 
-- [ ] Task 12 — SQLCipher-backed `Database` wrapper + schema (unit tested: wrong key cannot read the file)
-- [ ] Task 13 — `KeychainKeyStore` (unit tested: round-trip, idempotent create)
-- [ ] Task 14 — `Note` model + `NoteRepository` (unit tested: upsert/find, conflict resolution)
-- [ ] Task 15 — `IdentityKeyBuilder` — Tier 1/2/3 (unit tested, incl. VS Code title normalization)
-- [ ] Task 16 — `ChromeProfileResolver` — `--profile-directory` extraction (unit tested pure core; syscall adapter manually verified)
-- [ ] Task 17 — `AmbiguousMatchDetector` (unit tested, all three outcomes)
-- [ ] Task 18 — Wire persistence into the overlay coordinator (load/save/match on reappearance)
+- [ ] Task 12 — SQLCipher-backed `Database` wrapper + schema (unit tested: wrong key cannot read the file) — in progress
+- [x] Task 13 — `KeychainKeyStore` (unit tested: round-trip, idempotent create) — 3/3 tests passing
+- [ ] Task 14 — `Note` model + `NoteRepository` (unit tested: upsert/find, conflict resolution) — in progress
+- [x] Task 15 — `IdentityKeyBuilder` — Tier 1/2/3 (unit tested, incl. VS Code title normalization) — 10/10 tests passing
+- [x] Task 16 — `ChromeProfileResolver` — `--profile-directory` extraction (unit tested pure core; syscall parsing additionally verified empirically against live Chrome PIDs on this machine) — 3/3 tests passing. **Finding:** default-profile Chrome windows carry no `--profile-directory` flag at all — `profileDirectory(forPID:)` returns `nil` for them; downstream identity-key logic must treat `nil` as "no profile suffix, use plain Tier 2," not as an error.
+- [x] Task 17 — `AmbiguousMatchDetector` (unit tested, all three outcomes) — 3/3 tests passing
+- [ ] Task 18 — Wire persistence into the overlay coordinator (load/save/match on reappearance) — blocked on Task 12/14
 
 ## Phase 4 — Polish
 
 - [ ] Task 19 — Ambiguous-match confirmation UI
 - [ ] Task 20 — Orphaned / Tier 3 notes list
-- [ ] Task 21 — `Debouncer` utility + AXObserver callback coalescing (unit tested)
+- [x] Task 21 — `Debouncer` utility (unit tested) — 2/2 tests passing; not yet wired into `WindowTracker`'s AXObserver callbacks
 - [ ] Task 22 — Minimized-window badge hide/restore
 - [ ] Task 23 — Multi-window stress test pass (investigation)
 
