@@ -88,4 +88,35 @@ final class NoteRepositoryTests: XCTestCase {
 
         XCTAssertNil(found)
     }
+
+    /// Supports the conservative ambiguous-match rule (Task 17/18): when a
+    /// newly-appeared window has a generic title ("Untitled", "Untitled 2",
+    /// etc.), any stored note for the same bundle with a similarly generic
+    /// title is a plausible reattachment candidate — titles that aren't
+    /// generic must never be swept in, since that would defeat the point of
+    /// treating only truly ambiguous titles specially.
+    func testNotesWithGenericTitleReturnsOnlyGenericallyTitledNotesForThatBundle() throws {
+        let repo = try makeRepository()
+        var untitled = makeNote(identityKey: "com.example.app::title::Untitled", body: "a")
+        untitled.lastTitle = "Untitled"
+        var untitled2 = makeNote(identityKey: "com.example.app::title::Untitled 2", body: "b")
+        untitled2.lastTitle = "Untitled 2"
+        var namedDoc = makeNote(identityKey: "com.example.app::title::My Doc", body: "c")
+        namedDoc.lastTitle = "My Doc"
+        var otherBundleUntitled = makeNote(
+            identityKey: "com.other.app::title::Untitled",
+            body: "d",
+            bundleID: "com.other.app"
+        )
+        otherBundleUntitled.lastTitle = "Untitled"
+
+        try repo.upsert(untitled)
+        try repo.upsert(untitled2)
+        try repo.upsert(namedDoc)
+        try repo.upsert(otherBundleUntitled)
+
+        let candidates = try repo.notesWithGenericTitle(bundleID: "com.example.app")
+
+        XCTAssertEqual(Set(candidates.map(\.identityKey)), [untitled.identityKey, untitled2.identityKey])
+    }
 }

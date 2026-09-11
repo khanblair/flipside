@@ -114,6 +114,25 @@ public final class NoteRepository {
         return results
     }
 
+    /// Stored notes for `bundleID` whose last-seen title matches a generic
+    /// pattern ("Untitled", "Untitled 2", etc.) — the candidate pool for the
+    /// conservative ambiguous-match rule (spec §7/§12 item 1; see
+    /// `AmbiguousMatchDetector`). Exact identity-key lookups can only ever
+    /// return 0 or 1 rows (the key is UNIQUE), so this is the one place real
+    /// ambiguity can arise: several old notes with generic titles are all
+    /// equally plausible matches for a newly-appeared, generically-titled
+    /// window. Titles that aren't generic are never included, since sweeping
+    /// them in would defeat the point of treating only truly ambiguous
+    /// titles specially.
+    public func notesWithGenericTitle(bundleID: String) throws -> [Note] {
+        try allNotes(bundleID: bundleID).filter { note in
+            guard let title = note.lastTitle else { return false }
+            return title.range(of: Self.genericTitlePattern, options: .regularExpression) != nil
+        }
+    }
+
+    private static let genericTitlePattern = "^Untitled( \\d+)?$"
+
     // MARK: - Binding / row-decoding helpers
 
     private static func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String) {
