@@ -22,7 +22,10 @@ public final class CardWindowController: NSObject, NSTextViewDelegate {
     public var onClose: (() -> Void)?
 
     public override init() {
-        window = NSWindow(
+        // KeyableWindow, not NSWindow: a plain borderless window can't become
+        // key, and a non-key window never receives keystrokes — the note card
+        // would look focused but ignore all typing.
+        window = KeyableWindow(
             contentRect: .zero,
             styleMask: .borderless,
             backing: .buffered,
@@ -90,6 +93,8 @@ public final class CardWindowController: NSObject, NSTextViewDelegate {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         textView.isRichText = false
+        textView.isEditable = true
+        textView.isSelectable = true
         textView.font = .systemFont(ofSize: 15)
         textView.textContainerInset = NSSize(width: 18, height: 16)
         textView.drawsBackground = false
@@ -148,7 +153,11 @@ public final class CardWindowController: NSObject, NSTextViewDelegate {
     }
 
     public func show() {
-        window.orderFront(nil)
+        // makeKeyAndOrderFront (not just orderFront) plus activating the app:
+        // both are needed for the card to actually receive typing, since the
+        // target app is frontmost at the moment the badge is clicked.
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         window.makeFirstResponder(textView)
         updatePlaceholderVisibility()
     }

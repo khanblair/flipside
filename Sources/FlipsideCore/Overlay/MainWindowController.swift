@@ -159,12 +159,19 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         let label = NSTextField(labelWithString: text)
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        // Without this the label wins the layout fight against the button and
+        // squashes it to a sliver, so rows with long window titles appear to
+        // have no Flip button at all. The label should truncate instead.
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let flipButton = NSButton(title: "Flip", target: self, action: #selector(flipButtonClicked(_:)))
         flipButton.bezelStyle = .rounded
         flipButton.controlSize = .small
         flipButton.tag = row
         flipButton.translatesAutoresizingMaskIntoConstraints = false
+        flipButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        flipButton.setContentHuggingPriority(.required, for: .horizontal)
 
         rowContainer.addSubview(label)
         rowContainer.addSubview(flipButton)

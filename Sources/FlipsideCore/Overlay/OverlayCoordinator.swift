@@ -12,11 +12,14 @@ private final class WindowOverlay {
     private(set) var isMinimized = false
     private var lastFrame: CGRect
 
+    private let debugName: String
+
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
         self.lastFrame = trackedWindow.frame
+        self.debugName = Self.cardTitle(for: trackedWindow)
         applyFrame(trackedWindow.frame)
-        card.setTitle(Self.cardTitle(for: trackedWindow))
+        card.setTitle(debugName)
         card.setBody(note.body)
         setMinimized(trackedWindow.isMinimized)
     }
@@ -30,11 +33,14 @@ private final class WindowOverlay {
         let screens = NSScreen.screens.map(\.visibleFrame)
         guard let usableFrame = CardFrameSanitizer.sanitized(frame, visibleScreenFrames: screens) else {
             // Degenerate or offscreen window (AX reports plenty of these):
-            // nothing sensible to attach an overlay to.
+            // nothing sensible to attach an overlay to. Logged so it's
+            // visible why a given window never gets a badge.
+            NSLog("Flipside: no overlay for '%@' — unusable frame %@", debugName, NSStringFromRect(frame))
             badge.hide()
             card.hide()
             return
         }
+        NSLog("Flipside: overlay for '%@' at %@", debugName, NSStringFromRect(usableFrame))
         card.setFrame(usableFrame)
         badge.reposition(toCornerOf: usableFrame)
     }
