@@ -34,19 +34,19 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md). Each 
 
 ## Phase 3 — Persistence
 
-- [ ] Task 12 — SQLCipher-backed `Database` wrapper + schema (unit tested: wrong key cannot read the file) — in progress
+- [x] Task 12 — SQLCipher-backed `Database` wrapper + schema (unit tested: wrong key cannot read the file) — 2/2 tests passing
 - [x] Task 13 — `KeychainKeyStore` (unit tested: round-trip, idempotent create) — 3/3 tests passing
-- [ ] Task 14 — `Note` model + `NoteRepository` (unit tested: upsert/find, conflict resolution) — in progress
+- [x] Task 14 — `Note` model + `NoteRepository` (unit tested: upsert/find, conflict resolution) — 4/4 tests passing
 - [x] Task 15 — `IdentityKeyBuilder` — Tier 1/2/3 (unit tested, incl. VS Code title normalization) — 10/10 tests passing
 - [x] Task 16 — `ChromeProfileResolver` — `--profile-directory` extraction (unit tested pure core; syscall parsing additionally verified empirically against live Chrome PIDs on this machine) — 3/3 tests passing. **Finding:** default-profile Chrome windows carry no `--profile-directory` flag at all — `profileDirectory(forPID:)` returns `nil` for them; downstream identity-key logic must treat `nil` as "no profile suffix, use plain Tier 2," not as an error.
 - [x] Task 17 — `AmbiguousMatchDetector` (unit tested, all three outcomes) — 3/3 tests passing
-- [ ] Task 18 — Wire persistence into the overlay coordinator (load/save/match on reappearance) — blocked on Task 12/14
+- [x] Task 18 — Wire persistence into the overlay coordinator — `WindowIdentityResolver` + `NoteRepository.notesWithGenericTitle` (candidate query for the ambiguous-match rule) + `OverlayCoordinator` load/save/reattach + `main.swift` opens the real encrypted DB at launch. Reattachment auto-applies only when exactly one generic-title candidate exists; genuinely ambiguous cases fall through to a fresh note pending Task 19. Compiles and passes the full suite; live reattachment behavior needs a GUI session to verify.
 
 ## Phase 4 — Polish
 
 - [ ] Task 19 — Ambiguous-match confirmation UI
 - [ ] Task 20 — Orphaned / Tier 3 notes list
-- [x] Task 21 — `Debouncer` utility (unit tested) — 2/2 tests passing; not yet wired into `WindowTracker`'s AXObserver callbacks
+- [x] Task 21 — `Debouncer` utility, wired into `WindowTracker`'s move/resize AX callbacks (destroy notifications stay immediate) — 2/2 unit tests passing
 - [ ] Task 22 — Minimized-window badge hide/restore
 - [ ] Task 23 — Multi-window stress test pass (investigation)
 
