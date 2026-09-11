@@ -18,8 +18,13 @@
     <string>Flipside</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
+    <!--
+    LSUIElement intentionally omitted (defaults to false): this build shows
+    a Dock icon + main window rather than running as a menu-bar-only
+    accessory, since the menu-bar status item wasn't rendering reliably in
+    this environment. NSApp.setActivationPolicy(.regular) in main.swift is
+    the runtime equivalent, set for the same reason.
+    -->
     <key>NSAccessibilityUsageDescription</key>
     <string>Flipside needs Accessibility access to track window positions and attach notes to them.</string>
     <key>NSHumanReadableCopyright</key>

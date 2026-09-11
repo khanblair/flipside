@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayCoordinator: OverlayCoordinator?
     private var noteRepository: NoteRepository?
     private var orphanedNotesWindowController: OrphanedNotesWindowController?
+    private var mainWindowController: MainWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Flipside is a menu-bar-only accessory app: it never has a regular
@@ -23,18 +24,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let repository = Self.openNoteRepository()
         noteRepository = repository
 
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // The menu-bar status item isn't rendering reliably in this
+        // environment (confirmed with a minimal standalone test app, not a
+        // Flipside-specific bug) — kept around for whenever that's resolved,
+        // but the main window below is the reliable way to see the app.
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             let symbol = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Flipside")
             symbol?.isTemplate = true
             button.image = symbol
-            button.imagePosition = .imageOnly
+            button.title = " Flip"
+            button.imagePosition = .imageLeft
         }
         let menu = NSMenu()
+        menu.addItem(withTitle: "Show Flipside", action: #selector(showMainWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Orphaned Notes…", action: #selector(showOrphanedNotes), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Flipside", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        for menuItem in menu.items where menuItem.action == #selector(showOrphanedNotes) {
+        for menuItem in menu.items {
             menuItem.target = self
         }
         item.menu = menu
@@ -43,6 +50,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let coordinator = OverlayCoordinator(tracker: tracker, noteRepository: repository)
         overlayCoordinator = coordinator
         coordinator.start()
+
+        showMainWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        return true
+    }
+
+    @objc private func showMainWindow() {
+        let controller = mainWindowController ?? MainWindowController(tracker: tracker)
+        controller.onShowOrphanedNotes = { [weak self] in self?.showOrphanedNotes() }
+        controller.onQuit = { NSApp.terminate(nil) }
+        mainWindowController = controller
+        controller.refresh()
+        controller.show()
     }
 
     @objc private func showOrphanedNotes() {
@@ -79,7 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
+// .regular (Dock icon + app switcher entry) rather than .accessory: while
+// the menu-bar status item isn't rendering reliably in this environment,
+// a Dock icon is the most discoverable way to find and relaunch the app.
+app.setActivationPolicy(.regular)
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
