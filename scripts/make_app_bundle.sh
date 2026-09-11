@@ -8,6 +8,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$ROOT_DIR/build/Flipside.app"
 export PKG_CONFIG_PATH="$(brew --prefix sqlcipher)/lib/pkgconfig"
 
+"$ROOT_DIR/scripts/uninstall.sh"
+
 swift build -c "$CONFIG" --package-path "$ROOT_DIR"
 BIN_DIR="$(swift build -c "$CONFIG" --package-path "$ROOT_DIR" --show-bin-path)"
 EXECUTABLE_PATH="$BIN_DIR/Flipside"
