@@ -19,6 +19,11 @@ public final class OrphanedNotesWindowController: NSObject, NSTableViewDataSourc
             defer: false
         )
         window.title = "Orphaned Notes"
+        // See BadgeWindowController: this controller holds its own strong
+        // reference to `window` and is cached/reused across show() calls, so
+        // the default (true) would double-release it once the user closes
+        // the window and this controller is later touched again.
+        window.isReleasedWhenClosed = false
 
         super.init()
 

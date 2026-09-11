@@ -20,6 +20,11 @@ public final class BadgeWindowController {
             backing: .buffered,
             defer: false
         )
+        // Default is true, which frees the window the moment .close() is
+        // called — but this controller also holds its own strong reference,
+        // so that default causes a double-release once this controller is
+        // itself deallocated. False makes this controller the sole owner.
+        window.isReleasedWhenClosed = false
         window.level = .floating
         window.isOpaque = false
         window.backgroundColor = .clear

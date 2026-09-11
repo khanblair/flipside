@@ -26,6 +26,11 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         )
         window.title = "Flipside"
         window.minSize = NSSize(width: 420, height: 320)
+        // See BadgeWindowController: AppDelegate caches this controller and
+        // reuses it across show() calls, so the default (true) would
+        // double-release the window once the user closes it and the
+        // (still-alive) controller is touched again.
+        window.isReleasedWhenClosed = false
         super.init(window: window)
         buildUI()
         refresh()

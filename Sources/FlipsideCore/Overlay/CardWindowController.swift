@@ -16,6 +16,10 @@ public final class CardWindowController {
             backing: .buffered,
             defer: false
         )
+        // See BadgeWindowController: this controller holds its own strong
+        // reference to `window`, so the default (true) causes a double
+        // release once .close() has already freed it once.
+        window.isReleasedWhenClosed = false
         window.level = .floating
         window.isOpaque = false
         window.backgroundColor = .clear
