@@ -1,6 +1,6 @@
 # Flipside — Changelog / Implementation Checklist
 
-Tracks implementation status against [flipside-spec.md](flipside-spec.md). Each item is marked:
+Tracks implementation status against [flipside-spec.md](flipside-spec.md). **Current status: 42/42 unit tests passing** (`swift test`), full package + `.app` bundle assembly build clean. Each item is marked:
 
 - `[ ]` not started
 - `[~]` implemented, not yet runtime-verified (compiles / builds, but needs a live GUI session with Accessibility permission granted, or Apple Developer credentials, to actually exercise)
@@ -44,11 +44,11 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md). Each 
 
 ## Phase 4 — Polish
 
-- [ ] Task 19 — Ambiguous-match confirmation UI
-- [ ] Task 20 — Orphaned / Tier 3 notes list
+- [~] Task 19 — Ambiguous-match confirmation UI — `AmbiguousMatchPrompt` (modal `NSAlert`) wired into `OverlayCoordinator`'s `.ambiguous` case; compiles, not unit-testable (no way to drive a real modal loop headlessly), needs a live GUI session to verify
+- [~] Task 20 — Orphaned / Tier 3 notes list — `NoteRepository.allNotes(tier:)` is unit tested (1/1 passing); `OrphanedNotesWindowController` + status-bar menu item compile, needs a live GUI session to verify. Read-only for v1 — manual promotion to a Tier-2 key (spec §7's "the user can manually promote it") is not implemented.
 - [x] Task 21 — `Debouncer` utility, wired into `WindowTracker`'s move/resize AX callbacks (destroy notifications stay immediate) — 2/2 unit tests passing
-- [ ] Task 22 — Minimized-window badge hide/restore
-- [ ] Task 23 — Multi-window stress test pass (investigation)
+- [~] Task 22 — Minimized-window badge hide/restore — `TrackedWindow.isMinimized` + `WindowRegistry.updateMinimized` unit tested (2/2 passing); `WindowTracker`/`OverlayCoordinator` wiring compiles, needs a live GUI session to verify actual minimize/restore behavior
+- [ ] Task 23 — Multi-window stress test pass (investigation) — not started, needs a human at the machine
 
 ## Phase 5 — Packaging
 
@@ -59,5 +59,7 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md). Each 
 ## Known gaps requiring the user / a live macOS GUI session
 
 - Accessibility permission grant (Task 2) is an interactive OS prompt — cannot be clicked through non-interactively.
-- Live AX tracking, badge/card rendering, and flip animation (Tasks 4–11, 18–22) can be written and compiled, but genuinely exercising them requires running the built app with Accessibility access granted.
-- Notarization (Task 25) requires an Apple Developer ID certificate and notarization credentials not available in this environment — the script will be written but not executed.
+- Live AX tracking, badge/card rendering, flip animation, and the ambiguous-match/orphaned-notes UI (Tasks 4–11, 18–22) are written and compile, but genuinely exercising them requires running the built app (`open build/Flipside.app` after `scripts/make_app_bundle.sh`) with Accessibility access granted.
+- Task 7 (Accessibility Inspector audit) and Task 23 (multi-window stress test) are investigation tasks with no code to write — they need a human at the machine.
+- Notarization (Task 25) requires an Apple Developer ID certificate and notarization credentials not available in this environment — the script is written but not executed.
+- Manual promotion of an orphaned (Tier-3) note to a stable Tier-2 key, mentioned in spec §7 as something "the user can manually promote," is not implemented — the orphaned-notes list (Task 20) is read-only in this pass.
