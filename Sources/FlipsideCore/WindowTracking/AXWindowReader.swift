@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import CoreGraphics
 
@@ -57,6 +58,21 @@ enum AXWindowReader {
             AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
         }
 
-        return CGRect(origin: origin, size: size)
+        return Self.convertAXRectToCocoa(origin: origin, size: size)
+    }
+
+    /// The Accessibility API reports positions in "global display
+    /// coordinates": origin at the top-left of the screen, Y increasing
+    /// downward. AppKit's screen coordinate system (what `NSWindow.
+    /// setFrameOrigin`/`setFrame` expect) has origin at the bottom-left,
+    /// Y increasing upward. Feeding an unconverted AX rect straight into an
+    /// `NSWindow` places it at the vertically mirrored wrong spot on
+    /// screen — this conversion is what makes the two systems agree.
+    static func convertAXRectToCocoa(origin: CGPoint, size: CGSize) -> CGRect {
+        guard let mainScreenHeight = NSScreen.screens.first?.frame.height else {
+            return CGRect(origin: origin, size: size)
+        }
+        let flippedY = mainScreenHeight - origin.y - size.height
+        return CGRect(x: origin.x, y: flippedY, width: size.width, height: size.height)
     }
 }

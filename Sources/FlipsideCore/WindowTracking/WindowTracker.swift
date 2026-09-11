@@ -105,7 +105,7 @@ public final class WindowTracker {
                let sizeValue = sizeRef {
                 AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
             }
-            registry.updateFrame(CGRect(origin: origin, size: size), for: element)
+            registry.updateFrame(AXWindowReader.convertAXRectToCocoa(origin: origin, size: size), for: element)
             moveResizeDebouncer.schedule { [weak self] in
                 Task { @MainActor in
                     self?.onWindowsChanged?()
