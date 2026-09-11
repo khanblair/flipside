@@ -75,7 +75,8 @@ public final class WindowTracker {
             kAXMovedNotification,
             kAXResizedNotification,
             kAXUIElementDestroyedNotification,
-            kAXWindowMiniaturizedNotification
+            kAXWindowMiniaturizedNotification,
+            kAXWindowDeminiaturizedNotification
         ] {
             AXObserverAddNotification(observer, appElement, notification as CFString, refcon)
         }
@@ -110,6 +111,12 @@ public final class WindowTracker {
                     self?.onWindowsChanged?()
                 }
             }
+        case kAXWindowMiniaturizedNotification:
+            registry.updateMinimized(true, for: element)
+            onWindowsChanged?()
+        case kAXWindowDeminiaturizedNotification:
+            registry.updateMinimized(false, for: element)
+            onWindowsChanged?()
         default:
             onWindowsChanged?()
         }

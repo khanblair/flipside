@@ -7,17 +7,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let tracker = WindowTracker()
     private var overlayCoordinator: OverlayCoordinator?
+    private var noteRepository: NoteRepository?
+    private var orphanedNotesWindowController: OrphanedNotesWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AccessibilityPermission.requestIfNeeded()
 
+        let repository = Self.openNoteRepository()
+        noteRepository = repository
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.title = "🗂"
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Orphaned Notes…", action: #selector(showOrphanedNotes), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Flipside", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        for menuItem in menu.items where menuItem.action == #selector(showOrphanedNotes) {
+            menuItem.target = self
+        }
+        item.menu = menu
         statusItem = item
 
-        let coordinator = OverlayCoordinator(tracker: tracker, noteRepository: Self.openNoteRepository())
+        let coordinator = OverlayCoordinator(tracker: tracker, noteRepository: repository)
         overlayCoordinator = coordinator
         coordinator.start()
+    }
+
+    @objc private func showOrphanedNotes() {
+        guard let repository = noteRepository else { return }
+        let controller = orphanedNotesWindowController ?? OrphanedNotesWindowController(noteRepository: repository)
+        controller.reload(from: repository)
+        orphanedNotesWindowController = controller
+        controller.show()
     }
 
     /// Opens the encrypted notes database at the spec-mandated path (§9.1),

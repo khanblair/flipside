@@ -24,12 +24,13 @@ final class NoteRepositoryTests: XCTestCase {
         id: String = UUID().uuidString,
         identityKey: String,
         body: String = "hello world",
-        bundleID: String = "com.example.app"
+        bundleID: String = "com.example.app",
+        identityTier: IdentityTier = .title
     ) -> Note {
         Note(
             id: id,
             identityKey: identityKey,
-            identityTier: .title,
+            identityTier: identityTier,
             body: body,
             createdAt: 1_700_000_000,
             updatedAt: 1_700_000_000,
@@ -118,5 +119,23 @@ final class NoteRepositoryTests: XCTestCase {
         let candidates = try repo.notesWithGenericTitle(bundleID: "com.example.app")
 
         XCTAssertEqual(Set(candidates.map(\.identityKey)), [untitled.identityKey, untitled2.identityKey])
+    }
+
+    /// Backs the orphaned-notes list (Task 20 / Open Questions §12 item 1):
+    /// session-only notes are retained rather than discarded, and must be
+    /// findable across every bundle, not just one.
+    func testAllNotesByTierReturnsOnlyNotesOfThatTierAcrossAllBundles() throws {
+        let repo = try makeRepository()
+        let sessionNote1 = makeNote(identityKey: "session::a", bundleID: "com.example.app", identityTier: .session)
+        let sessionNote2 = makeNote(identityKey: "session::b", bundleID: "com.other.app", identityTier: .session)
+        let titleNote = makeNote(identityKey: "com.example.app::title::Stable", identityTier: .title)
+
+        try repo.upsert(sessionNote1)
+        try repo.upsert(sessionNote2)
+        try repo.upsert(titleNote)
+
+        let orphaned = try repo.allNotes(tier: .session)
+
+        XCTAssertEqual(Set(orphaned.map(\.identityKey)), [sessionNote1.identityKey, sessionNote2.identityKey])
     }
 }

@@ -23,6 +23,13 @@ public struct WindowRegistry<Key: Hashable> {
         windowsByKey[key] = window
     }
 
+    /// Updates only the minimized flag of the entry at `key`. No-op if `key` isn't present.
+    public mutating func updateMinimized(_ isMinimized: Bool, for key: Key) {
+        guard var window = windowsByKey[key] else { return }
+        window.isMinimized = isMinimized
+        windowsByKey[key] = window
+    }
+
     /// Removes and returns the tracked window for `key`, or `nil` if absent.
     @discardableResult
     public mutating func remove(for key: Key) -> TrackedWindow? {

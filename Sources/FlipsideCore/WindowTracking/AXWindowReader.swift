@@ -19,7 +19,8 @@ enum AXWindowReader {
                 appName: appName,
                 title: stringAttribute(axWindow, kAXTitleAttribute),
                 documentPath: stringAttribute(axWindow, kAXDocumentAttribute),
-                frame: frameAttribute(axWindow)
+                frame: frameAttribute(axWindow),
+                isMinimized: boolAttribute(axWindow, kAXMinimizedAttribute)
             ))
         }
     }
@@ -30,6 +31,14 @@ enum AXWindowReader {
             return nil
         }
         return value as? String
+    }
+
+    private static func boolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+            return false
+        }
+        return (value as? Bool) ?? false
     }
 
     private static func frameAttribute(_ element: AXUIElement) -> CGRect {

@@ -9,18 +9,34 @@ private final class WindowOverlay {
     let card = CardWindowController()
     let stateMachine = FlipStateMachine()
     var note: Note
+    private(set) var isMinimized = false
 
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
         card.setFrame(trackedWindow.frame)
         badge.reposition(toCornerOf: trackedWindow.frame)
-        badge.show()
         card.textView.string = note.body
+        setMinimized(trackedWindow.isMinimized)
     }
 
     func updateFrame(_ frame: CGRect) {
         badge.reposition(toCornerOf: frame)
         card.setFrame(frame)
+    }
+
+    /// Open Questions §12 item 2 (Task 22): minimized windows hide their
+    /// badge rather than shrinking into the Dock region. The card, if it
+    /// happened to be showing, also hides — it only reappears via an
+    /// explicit flip once the window is restored, never automatically.
+    func setMinimized(_ minimized: Bool) {
+        guard minimized != isMinimized else { return }
+        isMinimized = minimized
+        if minimized {
+            badge.hide()
+            card.hide()
+        } else {
+            badge.show()
+        }
     }
 
     func teardown() {
@@ -63,6 +79,7 @@ public final class OverlayCoordinator {
             seen.insert(element)
             if let overlay = overlaysByWindow[element] {
                 overlay.updateFrame(window.frame)
+                overlay.setMinimized(window.isMinimized)
             } else {
                 let note = resolveOrCreateNote(for: window)
                 let overlay = WindowOverlay(trackedWindow: window, note: note)
@@ -79,7 +96,7 @@ public final class OverlayCoordinator {
     }
 
     private func toggleFlip(for element: AXUIElement) {
-        guard let overlay = overlaysByWindow[element] else { return }
+        guard let overlay = overlaysByWindow[element], !overlay.isMinimized else { return }
         let newState = overlay.stateMachine.toggle()
 
         switch newState {
@@ -120,19 +137,30 @@ public final class OverlayCoordinator {
         }
 
         if resolved.tier == .title,
-           let candidates = log({ try repository.notesWithGenericTitle(bundleID: window.bundleID) }),
-           case .unambiguous(let note) = AmbiguousMatchDetector.resolve(candidates: candidates) {
-            // Exactly one orphaned note with a matching generic title pattern for
-            // this bundle: reattach it to this window's concrete key going forward.
-            var reattached = note
-            reattached.identityKey = resolved.key
-            reattached.identityTier = resolved.tier
-            log { try repository.upsert(reattached) }
-            return reattached
+           let candidates = log({ try repository.notesWithGenericTitle(bundleID: window.bundleID) }) {
+            var reattachTarget: Note?
+            switch AmbiguousMatchDetector.resolve(candidates: candidates) {
+            case .none:
+                break
+            case .unambiguous(let note):
+                // Exactly one orphaned note with a matching generic title
+                // pattern for this bundle: reattach it automatically.
+                reattachTarget = note
+            case .ambiguous(let ambiguousCandidates):
+                // Genuinely ambiguous — per spec §7, don't silently guess;
+                // ask the user which one (if any) belongs to this window.
+                reattachTarget = AmbiguousMatchPrompt.choose(
+                    candidates: ambiguousCandidates,
+                    windowTitle: window.title ?? window.appName
+                )
+            }
+            if var reattached = reattachTarget {
+                reattached.identityKey = resolved.key
+                reattached.identityTier = resolved.tier
+                log { try repository.upsert(reattached) }
+                return reattached
+            }
         }
-        // Multiple generic-title candidates is genuinely ambiguous — Task 19's
-        // confirmation UI (not yet built) owns that decision. Fall through to a
-        // fresh note here rather than silently guessing which one is meant.
 
         let note = Self.freshNote(for: window, identityKey: resolved.key, tier: resolved.tier, now: now)
         log { try repository.upsert(note) }

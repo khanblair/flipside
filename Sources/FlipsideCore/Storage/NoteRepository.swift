@@ -114,6 +114,40 @@ public final class NoteRepository {
         return results
     }
 
+    /// All stored notes of a given identity tier, across every bundle.
+    /// Backs the orphaned-notes list (Task 20 / Open Questions §12 item 1):
+    /// Tier-3 (session-only) notes are retained rather than discarded, and
+    /// need to be findable regardless of which app they came from.
+    public func allNotes(tier: IdentityTier) throws -> [Note] {
+        let sql = """
+            SELECT id, identity_key, identity_tier, body, created_at, updated_at,
+                   bundle_id, app_name, last_title, last_doc_path
+            FROM notes WHERE identity_tier = ?;
+            """
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db.rawHandle, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DatabaseError.execFailed(Self.errorMessage(db.rawHandle))
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_int(stmt, 1, Int32(tier.rawValue))
+
+        var results: [Note] = []
+        loop: while true {
+            let stepResult = sqlite3_step(stmt)
+            switch stepResult {
+            case SQLITE_ROW:
+                results.append(Self.note(from: stmt))
+            case SQLITE_DONE:
+                break loop
+            default:
+                throw DatabaseError.execFailed(Self.errorMessage(db.rawHandle))
+            }
+        }
+        return results
+    }
+
     /// Stored notes for `bundleID` whose last-seen title matches a generic
     /// pattern ("Untitled", "Untitled 2", etc.) — the candidate pool for the
     /// conservative ambiguous-match rule (spec §7/§12 item 1; see

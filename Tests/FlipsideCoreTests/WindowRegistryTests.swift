@@ -81,6 +81,26 @@ final class WindowRegistryTests: XCTestCase {
         XCTAssertNil(removed)
     }
 
+    func testUpdateMinimizedMutatesOnlyThatFlagOfExistingEntry() {
+        var registry = WindowRegistry<String>()
+        let original = makeWindow()
+        registry.upsert(original, for: "key-1")
+
+        registry.updateMinimized(true, for: "key-1")
+
+        var expected = original
+        expected.isMinimized = true
+        XCTAssertEqual(registry.all(), [expected])
+    }
+
+    func testUpdateMinimizedOnMissingKeyIsANoOp() {
+        var registry = WindowRegistry<String>()
+
+        registry.updateMinimized(true, for: "missing")
+
+        XCTAssertTrue(registry.all().isEmpty)
+    }
+
     func testAllKeyedReturnsEachWindowPairedWithItsKey() {
         var registry = WindowRegistry<String>()
         let first = makeWindow(title: "First")
