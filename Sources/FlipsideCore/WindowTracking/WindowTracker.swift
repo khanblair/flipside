@@ -5,6 +5,11 @@
 public final class WindowTracker {
     private var registry = WindowRegistry<AXUIElement>()
     private var observers: [pid_t: AXObserver] = [:]
+    // Rapid window churn (e.g. browser tabs opening as new windows, or a
+    // window being dragged) can fire many move/resize notifications per
+    // second; coalescing the resulting overlay-resync notification avoids
+    // the badge/card lag called out in spec §14's risk table.
+    private let moveResizeDebouncer = Debouncer(delay: 0.05)
     public var onWindowsChanged: (() -> Void)?
 
     public init() {}
@@ -82,7 +87,10 @@ public final class WindowTracker {
     private func handleAXNotification(element: AXUIElement, notification: String) {
         switch notification {
         case kAXUIElementDestroyedNotification:
+            // Explicit, immediate teardown — never debounced, so overlays
+            // never linger on a window that's already gone (spec §14).
             _ = registry.remove(for: element)
+            onWindowsChanged?()
         case kAXMovedNotification, kAXResizedNotification:
             var positionRef: CFTypeRef?
             var sizeRef: CFTypeRef?
@@ -97,10 +105,14 @@ public final class WindowTracker {
                 AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
             }
             registry.updateFrame(CGRect(origin: origin, size: size), for: element)
+            moveResizeDebouncer.schedule { [weak self] in
+                Task { @MainActor in
+                    self?.onWindowsChanged?()
+                }
+            }
         default:
-            break
+            onWindowsChanged?()
         }
-        onWindowsChanged?()
     }
 
     @objc private func handleAppLaunched(_ notification: Notification) {
