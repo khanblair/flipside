@@ -11,13 +11,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var orphanedNotesWindowController: OrphanedNotesWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Flipside is a menu-bar-only accessory app: it never has a regular
+        // visible window, which makes AppKit's automatic-termination feature
+        // treat it as idle and silently kill it in the background. This is
+        // exactly the "not seeing it" symptom — the process itself was being
+        // reaped, not a rendering or permissions problem.
+        ProcessInfo.processInfo.disableAutomaticTermination("Flipside runs as a menu-bar accessory with no regular windows")
+
         AccessibilityPermission.requestIfNeeded()
 
         let repository = Self.openNoteRepository()
         noteRepository = repository
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.title = "🗂"
+        if let button = item.button {
+            let symbol = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Flipside")
+            symbol?.isTemplate = true
+            button.image = symbol
+            button.imagePosition = .imageOnly
+        }
         let menu = NSMenu()
         menu.addItem(withTitle: "Orphaned Notes…", action: #selector(showOrphanedNotes), keyEquivalent: "")
         menu.addItem(.separator())

@@ -34,4 +34,11 @@ else
   echo "warning: libsqlcipher.dylib dependency not found via otool -L; app may not be self-contained" >&2
 fi
 
+# install_name_tool invalidates whatever ad-hoc signature the linker applied
+# (macOS refuses to launch a binary whose signature no longer matches its
+# content — SIGKILL "Code Signature Invalid"). Re-sign ad-hoc so the bundle
+# is launchable for local testing. scripts/notarize.sh replaces this with a
+# real Developer ID signature for distribution.
+codesign --force --deep --sign - "$APP_DIR"
+
 echo "Assembled $APP_DIR"

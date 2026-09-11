@@ -1,13 +1,21 @@
 import AppKit
 
+/// A small, circular, always-on-top badge pinned to a tracked window's
+/// corner (spec §8.1). Styled as a solid accent-colored disc with a
+/// centered SF Symbol, matching the system's own menu-bar/notification
+/// badge language rather than a raw emoji glyph.
 @MainActor
 public final class BadgeWindowController {
     private let window: NSWindow
     public var onBadgeClicked: (() -> Void)?
 
+    private static let diameter: CGFloat = 26
+    private static let cornerInset: CGFloat = 6
+
     public init() {
+        let diameter = Self.diameter
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 24, height: 24),
+            contentRect: NSRect(x: 0, y: 0, width: diameter, height: diameter),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -19,16 +27,37 @@ public final class BadgeWindowController {
         window.ignoresMouseEvents = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 24, height: 24))
-        button.bezelStyle = .circular
-        button.title = "🗂"
+        let button = NSButton(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
+        button.title = ""
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = diameter / 2
+        button.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        button.layer?.borderWidth = 0.5
+        button.layer?.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
+        button.layer?.shadowColor = NSColor.black.cgColor
+        button.layer?.shadowOpacity = 0.35
+        button.layer?.shadowRadius = 3
+        button.layer?.shadowOffset = CGSize(width: 0, height: -1)
+
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        button.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Flip note")?
+            .withSymbolConfiguration(symbolConfig)
+        button.contentTintColor = .white
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+
         button.target = self
         button.action = #selector(handleClick)
         window.contentView = button
     }
 
     public func reposition(toCornerOf targetFrame: CGRect) {
-        let badgeOrigin = CGPoint(x: targetFrame.maxX - 28, y: targetFrame.maxY - 28)
+        let diameter = Self.diameter
+        let badgeOrigin = CGPoint(
+            x: targetFrame.maxX - diameter - Self.cornerInset,
+            y: targetFrame.maxY - diameter - Self.cornerInset
+        )
         window.setFrameOrigin(badgeOrigin)
     }
 
