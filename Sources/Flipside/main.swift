@@ -1,8 +1,11 @@
 import AppKit
 import FlipsideCore
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private let tracker = WindowTracker()
+    private var overlayCoordinator: OverlayCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AccessibilityPermission.requestIfNeeded()
@@ -10,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.title = "🗂"
         statusItem = item
+
+        let coordinator = OverlayCoordinator(tracker: tracker)
+        overlayCoordinator = coordinator
+        coordinator.start()
     }
 }
 
