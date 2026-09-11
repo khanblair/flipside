@@ -49,7 +49,10 @@ final class DatabaseTests: XCTestCase {
         // underlying sqlite3 connection so the file can be reopened cleanly.
 
         XCTAssertThrowsError(try Database(path: path, key: wrongKey)) { error in
-            XCTAssertTrue(error is DatabaseError, "Expected a DatabaseError, got \(error)")
+            guard case DatabaseError.keyRejected = error else {
+                XCTFail("Expected DatabaseError.keyRejected, got \(error)")
+                return
+            }
         }
     }
 }

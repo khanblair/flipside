@@ -65,6 +65,13 @@ final class NoteRepositoryTests: XCTestCase {
         second.lastTitle = "My Window (updated)"
         try repo.upsert(second)
 
+        // A note in a different bundle, so the count below is only a pass if
+        // `allNotes(bundleID:)` actually filters rather than just returning everything.
+        try repo.upsert(makeNote(
+            identityKey: "com.other.app::title::Other Window",
+            bundleID: "com.other.app"
+        ))
+
         let found = try repo.findNote(identityKey: identityKey)
         XCTAssertEqual(found?.body, "second body")
         XCTAssertEqual(found?.updatedAt, first.updatedAt + 100)
