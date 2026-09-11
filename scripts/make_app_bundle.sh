@@ -8,7 +8,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$ROOT_DIR/build/Flipside.app"
 export PKG_CONFIG_PATH="$(brew --prefix sqlcipher)/lib/pkgconfig"
 
-"$ROOT_DIR/scripts/uninstall.sh"
+# Only the minimal cleanup a rebuild actually needs: stop whatever's running
+# so it isn't holding the old binary open. This does NOT reset Accessibility
+# permission or remove the bundle -- that's scripts/uninstall.sh, a separate,
+# explicit action, since resetting permission on every single rebuild forces
+# a re-grant after every build and makes iterating unusable.
+killall Flipside 2>/dev/null || true
+sleep 1
 
 swift build -c "$CONFIG" --package-path "$ROOT_DIR"
 BIN_DIR="$(swift build -c "$CONFIG" --package-path "$ROOT_DIR" --show-bin-path)"
