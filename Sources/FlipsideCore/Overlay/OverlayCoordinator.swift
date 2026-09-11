@@ -95,7 +95,12 @@ public final class OverlayCoordinator {
         }
     }
 
-    private func toggleFlip(for element: AXUIElement) {
+    /// Triggers the same flip a badge click would, for the tracked window
+    /// identified by `element` (from `WindowTracker.currentWindowsKeyed()`).
+    /// Exposed so a fallback UI (e.g. a "Flip" button in the main window's
+    /// tracked-windows list) can drive the flip when the corner badge isn't
+    /// a reliable trigger to click.
+    public func toggleFlip(for element: AXUIElement) {
         guard let overlay = overlaysByWindow[element], !overlay.isMinimized else { return }
         let newState = overlay.stateMachine.toggle()
 

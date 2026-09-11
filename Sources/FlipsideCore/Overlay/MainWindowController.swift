@@ -1,19 +1,23 @@
 import AppKit
+import ApplicationServices
 
 /// A visible status/control window shown on launch. Flipside's core feature
 /// (badges attached to other apps' windows, per spec §8) doesn't need a
 /// window of its own — but this environment's menu-bar status item wasn't
 /// rendering reliably, so this gives the user a concrete, always-visible
-/// place to confirm the app is alive and see what it's currently tracking.
+/// place to confirm the app is alive, see what it's currently tracking, and
+/// (until the corner badge's own visibility is fully resolved) trigger the
+/// flip directly via a "Flip" button per row.
 @MainActor
 public final class MainWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let tracker: WindowTracker
     private let tableView = NSTableView()
     private let statusLabel = NSTextField(labelWithString: "")
     private var refreshTimer: Timer?
-    private var trackedWindows: [TrackedWindow] = []
+    private var trackedWindowsKeyed: [(AXUIElement, TrackedWindow)] = []
 
     public var onShowOrphanedNotes: (() -> Void)?
+    public var onFlipWindow: ((AXUIElement) -> Void)?
     public var onQuit: (() -> Void)?
 
     public init(tracker: WindowTracker) {
@@ -49,10 +53,10 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
     }
 
     public func refresh() {
-        trackedWindows = tracker.currentWindows().sorted { $0.appName < $1.appName }
-        statusLabel.stringValue = trackedWindows.isEmpty
+        trackedWindowsKeyed = tracker.currentWindowsKeyed().sorted { $0.1.appName < $1.1.appName }
+        statusLabel.stringValue = trackedWindowsKeyed.isEmpty
             ? "Flipside is running. No windows tracked yet."
-            : "Flipside is running. Tracking \(trackedWindows.count) window(s):"
+            : "Flipside is running. Tracking \(trackedWindowsKeyed.count) window(s):"
         tableView.reloadData()
     }
 
@@ -91,6 +95,7 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         tableView.dataSource = self
         tableView.delegate = self
         tableView.usesAlternatingRowBackgroundColors = true
+        tableView.rowHeight = 28
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -142,18 +147,44 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
     }
 
     public func numberOfRows(in tableView: NSTableView) -> Int {
-        trackedWindows.count
+        trackedWindowsKeyed.count
     }
 
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let window = trackedWindows[row]
-        let text = "\(window.appName) — \(window.title ?? "(no title)")"
-        let identifier = NSUserInterfaceItemIdentifier("trackedWindowCell")
-        let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTextField
-            ?? NSTextField(labelWithString: "")
-        cell.identifier = identifier
-        cell.stringValue = text
-        return cell
+        let (_, trackedWindow) = trackedWindowsKeyed[row]
+        let text = "\(trackedWindow.appName) — \(trackedWindow.title ?? "(no title)")"
+
+        let rowContainer = NSView()
+
+        let label = NSTextField(labelWithString: text)
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let flipButton = NSButton(title: "Flip", target: self, action: #selector(flipButtonClicked(_:)))
+        flipButton.bezelStyle = .rounded
+        flipButton.controlSize = .small
+        flipButton.tag = row
+        flipButton.translatesAutoresizingMaskIntoConstraints = false
+
+        rowContainer.addSubview(label)
+        rowContainer.addSubview(flipButton)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: rowContainer.leadingAnchor, constant: 4),
+            label.centerYAnchor.constraint(equalTo: rowContainer.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: flipButton.leadingAnchor, constant: -8),
+
+            flipButton.trailingAnchor.constraint(equalTo: rowContainer.trailingAnchor, constant: -4),
+            flipButton.centerYAnchor.constraint(equalTo: rowContainer.centerYAnchor)
+        ])
+
+        return rowContainer
+    }
+
+    @objc private func flipButtonClicked(_ sender: NSButton) {
+        guard sender.tag < trackedWindowsKeyed.count else { return }
+        let (element, _) = trackedWindowsKeyed[sender.tag]
+        onFlipWindow?(element)
     }
 
     @objc private func refreshClicked() {

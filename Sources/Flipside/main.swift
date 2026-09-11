@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showMainWindow() {
         let controller = mainWindowController ?? MainWindowController(tracker: tracker)
         controller.onShowOrphanedNotes = { [weak self] in self?.showOrphanedNotes() }
+        controller.onFlipWindow = { [weak self] element in self?.overlayCoordinator?.toggleFlip(for: element) }
         controller.onQuit = { NSApp.terminate(nil) }
         mainWindowController = controller
         controller.refresh()
