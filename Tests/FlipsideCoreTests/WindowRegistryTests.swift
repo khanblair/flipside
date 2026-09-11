@@ -80,4 +80,18 @@ final class WindowRegistryTests: XCTestCase {
 
         XCTAssertNil(removed)
     }
+
+    func testAllKeyedReturnsEachWindowPairedWithItsKey() {
+        var registry = WindowRegistry<String>()
+        let first = makeWindow(title: "First")
+        let second = makeWindow(title: "Second")
+        registry.upsert(first, for: "key-1")
+        registry.upsert(second, for: "key-2")
+
+        let keyed = Dictionary(uniqueKeysWithValues: registry.allKeyed())
+
+        XCTAssertEqual(keyed["key-1"], first)
+        XCTAssertEqual(keyed["key-2"], second)
+        XCTAssertEqual(keyed.count, 2)
+    }
 }

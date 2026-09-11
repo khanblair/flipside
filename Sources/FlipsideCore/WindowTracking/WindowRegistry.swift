@@ -33,4 +33,13 @@ public struct WindowRegistry<Key: Hashable> {
     public func all() -> [TrackedWindow] {
         Array(windowsByKey.values)
     }
+
+    /// All currently tracked windows together with their keys, in no
+    /// particular order. Callers that must create/destroy per-window state
+    /// (e.g. one overlay window per tracked window) need the key to tell
+    /// windows apart — `all()` alone is ambiguous when two windows share
+    /// identical field values.
+    public func allKeyed() -> [(Key, TrackedWindow)] {
+        Array(windowsByKey)
+    }
 }
