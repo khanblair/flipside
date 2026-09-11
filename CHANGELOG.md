@@ -56,6 +56,12 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md). **Cur
 - [~] Task 25 — Notarization script — written (`scripts/notarize.sh`), not executed; requires the user's own Apple Developer ID certificate + notarytool credentials
 - [x] Task 26 — DMG build script — `scripts/build_dmg.sh` run end-to-end against a built bundle; `hdiutil verify` passed
 
+## Post-review fixes (found while first launching the built app)
+
+- **App was being silently killed within ~1 minute of launch.** Root cause: Flipside is menu-bar-only with no regular window, and AppKit's automatic-termination feature treats that as "idle" and reaps it in the background (confirmed via the unified log — `_kLSApplicationWouldBeTerminatedByTALKey=1` shortly after launch). Fixed with `ProcessInfo.disableAutomaticTermination(_:)` at launch. This is why Task 2/4–11 verification looked like it wasn't running at all — it *was* launching, just dying quietly with no crash report.
+- **App also failed to launch at all on the very first attempt**, with `SIGKILL (Code Signature Invalid)`: `install_name_tool` (used by `make_app_bundle.sh` to bundle `libsqlcipher.dylib`, Task 24) invalidates the linker's ad-hoc signature, and macOS refuses to run a binary whose signature no longer matches its content. `make_app_bundle.sh` now re-signs ad-hoc after that step.
+- Status-bar icon and badge upgraded from a raw emoji glyph to a proper template SF Symbol (`note.text`); the badge is now a solid accent-color disc with a subtle border/shadow; the note card is now a rounded, bordered panel with a small labeled header and padded text, instead of a bare full-bleed text view.
+
 ## Known gaps requiring the user / a live macOS GUI session
 
 - Accessibility permission grant (Task 2) is an interactive OS prompt — cannot be clicked through non-interactively.
