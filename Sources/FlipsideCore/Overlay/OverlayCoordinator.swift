@@ -10,16 +10,27 @@ private final class WindowOverlay {
     let stateMachine = FlipStateMachine()
     var note: Note
     private(set) var isMinimized = false
+    private var lastFrame: CGRect
 
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
+        self.lastFrame = trackedWindow.frame
         card.setFrame(trackedWindow.frame)
         badge.reposition(toCornerOf: trackedWindow.frame)
         card.textView.string = note.body
         setMinimized(trackedWindow.isMinimized)
     }
 
+    /// No-ops when the frame hasn't actually changed. `syncOverlays()` calls
+    /// this for every tracked window on any AX move/resize notification
+    /// *anywhere* on the system, not just the window that actually moved —
+    /// with several windows tracked, that's frequent. Without this guard,
+    /// a busy, unrelated window (e.g. a chat app's UI updates) would keep
+    /// re-setting this card's `NSWindow` frame, visibly interrupting a
+    /// flip animation in progress on it.
     func updateFrame(_ frame: CGRect) {
+        guard frame != lastFrame else { return }
+        lastFrame = frame
         badge.reposition(toCornerOf: frame)
         card.setFrame(frame)
     }
@@ -106,15 +117,17 @@ public final class OverlayCoordinator {
 
         switch newState {
         case .back:
-            overlay.card.textView.string = overlay.note.body
             overlay.card.show()
-            animateFlip(overlay.card.window, from: 0, to: 180, completion: nil)
+            animateFlip(overlay.card.window, swapContent: {
+                overlay.card.textView.string = overlay.note.body
+            }, completion: nil)
         case .front:
-            overlay.note.body = overlay.card.textView.string
-            persist(overlay)
-            animateFlip(overlay.card.window, from: 180, to: 0) { [weak overlay] in
+            animateFlip(overlay.card.window, swapContent: { [weak self] in
+                overlay.note.body = overlay.card.textView.string
+                self?.persist(overlay)
+            }, completion: { [weak overlay] in
                 overlay?.card.hide()
-            }
+            })
         }
     }
 
@@ -205,30 +218,61 @@ public final class OverlayCoordinator {
 
     // MARK: - Flip animation (spec §8.2)
 
-    private func animateFlip(_ window: NSWindow, from: CGFloat, to: CGFloat, completion: (() -> Void)?) {
+    /// Rotates the card's content away to edge-on (90°, momentarily
+    /// invisible — a real physical card looks the same from directly
+    /// side-on regardless of which face you started from), calls
+    /// `swapContent` at that exact midpoint, then rotates back to identity
+    /// (0°, facing the viewer normally).
+    ///
+    /// A naive single continuous rotation from 0° to 180° would settle with
+    /// the card facing the viewer *mirrored* (`CALayer.isDoubleSided`
+    /// defaults to `true`, so the back face renders reversed rather than
+    /// being culled) — unreadable, and easy to mistake for the card not
+    /// rendering at all. Going out to 90° and back to identity instead
+    /// means the settled state is always right-side-up, whichever
+    /// direction triggered it.
+    private func animateFlip(_ window: NSWindow, swapContent: @escaping () -> Void, completion: (() -> Void)?) {
         guard let contentView = window.contentView else {
+            swapContent()
             completion?()
             return
         }
         contentView.wantsLayer = true
         guard let layer = contentView.layer else {
+            swapContent()
             completion?()
             return
         }
 
-        let fromTransform = FlipTransform.transform(angleDegrees: from, perspectiveDistance: perspectiveDistance)
-        let toTransform = FlipTransform.transform(angleDegrees: to, perspectiveDistance: perspectiveDistance)
+        let halfDuration = flipDuration / 2
+        let edgeOnTransform = FlipTransform.transform(angleDegrees: 90, perspectiveDistance: perspectiveDistance)
+        let identityTransform = CATransform3DIdentity
 
-        let animation = CABasicAnimation(keyPath: "transform")
-        animation.fromValue = NSValue(caTransform3D: fromTransform)
-        animation.toValue = NSValue(caTransform3D: toTransform)
-        animation.duration = flipDuration
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        let outAnimation = CABasicAnimation(keyPath: "transform")
+        outAnimation.fromValue = NSValue(caTransform3D: identityTransform)
+        outAnimation.toValue = NSValue(caTransform3D: edgeOnTransform)
+        outAnimation.duration = halfDuration
+        outAnimation.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
         CATransaction.begin()
-        CATransaction.setCompletionBlock(completion)
-        layer.transform = toTransform
-        layer.add(animation, forKey: "flip")
+        CATransaction.setCompletionBlock {
+            swapContent()
+            layer.transform = edgeOnTransform
+
+            let inAnimation = CABasicAnimation(keyPath: "transform")
+            inAnimation.fromValue = NSValue(caTransform3D: edgeOnTransform)
+            inAnimation.toValue = NSValue(caTransform3D: identityTransform)
+            inAnimation.duration = halfDuration
+            inAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+            CATransaction.begin()
+            CATransaction.setCompletionBlock(completion)
+            layer.transform = identityTransform
+            layer.add(inAnimation, forKey: "flipIn")
+            CATransaction.commit()
+        }
+        layer.transform = edgeOnTransform
+        layer.add(outAnimation, forKey: "flipOut")
         CATransaction.commit()
     }
 }
