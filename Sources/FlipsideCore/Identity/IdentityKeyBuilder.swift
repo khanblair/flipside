@@ -7,11 +7,15 @@ import Foundation
 ///   path is available (e.g. via `kAXDocumentAttribute`). Preferred whenever present.
 /// - Tier 2 (title): `{bundleID}::title::{title}` — used when no document path is
 ///   available but the window has a usable title.
-///   - Chrome/Chromium-specific extension (§7.1.1): when a profile directory is also
-///     supplied (from `--profile-directory` process-argument lookup), the key becomes
-///     `{bundleID}::profile::{profileDirectory}::title::{title}` so that two profiles
-///     with identically-titled windows do not collide. This remains Tier 2 — it is a
-///     special case layered on top of Tier 2, not a distinct tier.
+/// - Chrome/Chromium-specific extension (§7.1.1): when a profile directory is supplied
+///   (from `--profile-directory` process-argument lookup), it scopes the key —
+///   `{bundleID}::profile::{dir}::doc::{url}` or `{bundleID}::profile::{dir}::title::{title}`
+///   — so two profiles cannot collide. This is a qualifier layered on top of the
+///   generic scheme, not a distinct tier, and it applies to *both* tiers: Chrome
+///   reports the tab URL as a document, so Chrome windows resolve to Tier 1 and a
+///   Tier-2-only qualifier would never take effect for the browser it exists for.
+///   Windows on Chrome's Default profile carry no `--profile-directory` flag at all,
+///   so they produce unqualified keys.
 /// - Tier 3 (session-only): neither a document path nor a usable title is available.
 ///   No stable key can be produced; the caller should track the window for the
 ///   current session only (never persisted).
@@ -44,19 +48,28 @@ public enum IdentityKeyBuilder {
         title: String?,
         chromeProfileDirectory: String?
     ) -> (key: String, tier: IdentityTier)? {
+        // The profile qualifier scopes whichever tier applies, rather than
+        // only Tier 2. Chrome exposes the tab's URL via kAXDocumentAttribute,
+        // so Chrome windows always resolve to Tier 1 — if the qualifier only
+        // applied to Tier 2 it would never take effect for the very browser
+        // it exists for, and two profiles viewing the same URL would collide
+        // (spec §4 Story 1, the exact case §7.1.1 exists to prevent).
+        let profileQualifier: String
+        if let chromeProfileDirectory, !chromeProfileDirectory.isEmpty {
+            profileQualifier = "::profile::\(chromeProfileDirectory)"
+        } else {
+            profileQualifier = ""
+        }
+
         if let documentPath, !documentPath.isEmpty {
-            return ("\(bundleID)::doc::\(documentPath)", .document)
+            return ("\(bundleID)\(profileQualifier)::doc::\(documentPath)", .document)
         }
 
         guard let usableTitle = normalizedTitle(title, bundleID: bundleID) else {
             return nil
         }
 
-        if let chromeProfileDirectory, !chromeProfileDirectory.isEmpty {
-            return ("\(bundleID)::profile::\(chromeProfileDirectory)::title::\(usableTitle)", .title)
-        }
-
-        return ("\(bundleID)::title::\(usableTitle)", .title)
+        return ("\(bundleID)\(profileQualifier)::title::\(usableTitle)", .title)
     }
 
     /// Normalizes a raw window title for use in an identity key.

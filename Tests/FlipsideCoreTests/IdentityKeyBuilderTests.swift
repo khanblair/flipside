@@ -5,15 +5,65 @@ final class IdentityKeyBuilderTests: XCTestCase {
 
     // 1. Document path present → Tier 1 key in the exact format above, regardless of title/profile.
     func testDocumentPathProducesTier1Key() {
+        // Non-Chromium apps never have a profile directory resolved for them
+        // (WindowIdentityResolver only looks it up for Chromium bundle IDs).
         let result = IdentityKeyBuilder.key(
             bundleID: "com.apple.Preview",
             documentPath: "/Users/me/Documents/report.pdf",
             title: "report.pdf",
-            chromeProfileDirectory: "Profile 2"
+            chromeProfileDirectory: nil
         )
 
         XCTAssertEqual(result?.key, "com.apple.Preview::doc::/Users/me/Documents/report.pdf")
         XCTAssertEqual(result?.tier, .document)
+    }
+
+    /// Chrome reports the tab URL via kAXDocumentAttribute, so its windows
+    /// resolve to Tier 1. The profile qualifier has to apply there too, or it
+    /// never takes effect for the browser it was built for.
+    func testChromeProfileScopesDocumentTierKey() {
+        let result = IdentityKeyBuilder.key(
+            bundleID: "com.google.Chrome",
+            documentPath: "https://mail.google.com/",
+            title: "Inbox - Google Chrome",
+            chromeProfileDirectory: "Profile 2"
+        )
+
+        XCTAssertEqual(result?.key, "com.google.Chrome::profile::Profile 2::doc::https://mail.google.com/")
+        XCTAssertEqual(result?.tier, .document)
+    }
+
+    /// Spec §4 Story 1: the same URL open in two different Chrome profiles
+    /// must get two different notes, never one shared note.
+    func testSameUrlInDifferentChromeProfilesProducesDifferentKeys() {
+        let personal = IdentityKeyBuilder.key(
+            bundleID: "com.google.Chrome",
+            documentPath: "https://mail.google.com/",
+            title: "Inbox - Google Chrome",
+            chromeProfileDirectory: "Default"
+        )
+        let work = IdentityKeyBuilder.key(
+            bundleID: "com.google.Chrome",
+            documentPath: "https://mail.google.com/",
+            title: "Inbox - Google Chrome",
+            chromeProfileDirectory: "Profile 2"
+        )
+
+        XCTAssertNotNil(personal?.key)
+        XCTAssertNotEqual(personal?.key, work?.key)
+    }
+
+    /// Chrome's Default profile omits --profile-directory entirely, so those
+    /// windows must still produce the plain, unqualified key.
+    func testChromeWithoutProfileDirectoryProducesUnqualifiedKey() {
+        let result = IdentityKeyBuilder.key(
+            bundleID: "com.google.Chrome",
+            documentPath: "https://example.com/",
+            title: "Example - Google Chrome",
+            chromeProfileDirectory: nil
+        )
+
+        XCTAssertEqual(result?.key, "com.google.Chrome::doc::https://example.com/")
     }
 
     // 2. No document path, plain title, no profile directory → Tier 2 key in the plain format.

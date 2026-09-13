@@ -13,15 +13,21 @@ private final class WindowOverlay {
     private var lastFrame: CGRect
 
     private let debugName: String
+    private var hasUsableFrame = false
 
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
         self.lastFrame = trackedWindow.frame
         self.debugName = Self.cardTitle(for: trackedWindow)
-        applyFrame(trackedWindow.frame)
+        self.isMinimized = trackedWindow.isMinimized
         card.setTitle(debugName)
         card.setBody(note.body)
-        setMinimized(trackedWindow.isMinimized)
+        // applyFrame ends in updateVisibility(), which is what actually shows
+        // the badge. This used to go through setMinimized(), whose
+        // "no change" guard short-circuited for the overwhelmingly common
+        // case of a non-minimized window (isMinimized was already false), so
+        // badge.show() never ran and badges only appeared after a flip.
+        applyFrame(trackedWindow.frame)
     }
 
     static func cardTitle(for window: TrackedWindow) -> String {
@@ -36,13 +42,14 @@ private final class WindowOverlay {
             // nothing sensible to attach an overlay to. Logged so it's
             // visible why a given window never gets a badge.
             NSLog("Flipside: no overlay for '%@' — unusable frame %@", debugName, NSStringFromRect(frame))
-            badge.hide()
-            card.hide()
+            hasUsableFrame = false
+            updateVisibility()
             return
         }
-        NSLog("Flipside: overlay for '%@' at %@", debugName, NSStringFromRect(usableFrame))
+        hasUsableFrame = true
         card.setFrame(usableFrame)
         badge.reposition(toCornerOf: usableFrame)
+        updateVisibility()
     }
 
     /// No-ops when the frame hasn't actually changed. `syncOverlays()` calls
@@ -65,11 +72,25 @@ private final class WindowOverlay {
     func setMinimized(_ minimized: Bool) {
         guard minimized != isMinimized else { return }
         isMinimized = minimized
-        if minimized {
+        // Minimizing while flipped would otherwise leave the state machine
+        // saying "back" with the card hidden, so the next badge click would
+        // appear to do nothing.
+        if minimized, stateMachine.state == .back {
+            stateMachine.toggle()
+        }
+        updateVisibility()
+    }
+
+    /// Single place that decides whether the overlay is on screen: the badge
+    /// shows whenever the window has a usable frame and isn't minimized.
+    /// The card is never shown from here — it appears only via an explicit
+    /// flip — but it is hidden alongside the badge.
+    private func updateVisibility() {
+        if hasUsableFrame && !isMinimized {
+            badge.show()
+        } else {
             badge.hide()
             card.hide()
-        } else {
-            badge.show()
         }
     }
 
