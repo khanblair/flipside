@@ -1,9 +1,11 @@
 # Flipside — Technical Specification
 
-**Status:** Draft v0.1
+**Status:** v0.2 — as-built. Updated from the original pre-implementation draft (v0.1) to match what actually shipped. Sections that changed during implementation are marked **[as-built]**, with the original design intent preserved alongside the reason it changed.
 **Platform:** macOS (Windows planned for a later phase, out of scope here)
-**Distribution:** Direct (Developer ID signed + notarized), not Mac App Store
+**Distribution:** Direct (Developer ID signed + notarized), not Mac App Store — *signing/notarization not yet performed; see §11*
 **Audience:** Personal tool, single user, single machine
+
+> **Implementation status at a glance:** Phases 1–4 (§13) are substantially built and the core loop is confirmed working end-to-end — flip a window, type a note, dismiss, and the note persists encrypted and reappears. Phase 5 (signing/notarization) is scripted but unexecuted, pending Apple Developer credentials. Current test suite: 56 unit tests passing. See `CHANGELOG.md` for per-task status.
 
 ---
 
@@ -12,6 +14,8 @@
 Flipside is a macOS utility that attaches a note card to the back of any window on the system — any app, not just Flipside's own UI. Each tracked window gets a small, always-visible corner badge. Clicking the badge plays a card-flip animation and reveals a note attached specifically to that window (or, where possible, to the document that window is showing). Clicking again flips back to reveal the real window underneath.
 
 The core idea: turn every open window into a two-sided object — front is the app, back is your notes about it.
+
+**[as-built]** In addition to the per-window badges, the app has a **main window** listing every tracked window, with a "Flip" button per row and access to the orphaned-notes list. This was not in the original design — v0.1 assumed a menu-bar-only accessory app with no window of its own (§5). It was added because the menu-bar status item does not render on the development machine (see §16), leaving no reliable way to see whether the app was running or to reach its controls. It has since proven useful in its own right as a way to see what's being tracked.
 
 ---
 
@@ -48,13 +52,30 @@ The core idea: turn every open window into a two-sided object — front is the a
 
 ### 4.1 Coverage note
 
-Story 1 (Chrome profiles) is the one story in this list the current design does **not** fully satisfy yet — it's called out explicitly rather than glossed over. See §7.1 for the gap and the fix.
+Story 1 (Chrome profiles) was the one story the original design did **not** fully satisfy — called out explicitly rather than glossed over. See §7.1.1 for the gap and the fix.
+
+**[as-built] Story coverage now:**
+
+| Story | Status |
+|---|---|
+| 1 — Chrome profiles | **Implemented, unverified.** The profile qualifier works and is unit tested, but has never been run against a live second Chrome profile (§7.1.1). Chrome also turned out to key on tab URL rather than title, which is *better* for this story than the original design assumed. |
+| 2 — Docker note survives quit/relaunch | **Satisfied.** Docker keeps a static title, the easy case. |
+| 3 — WhatsApp reminder | **Satisfied.** Static single-window title. |
+| 4 — Two VS Code windows | **Unverified** — VS Code not observed in testing. |
+| 5 — Claude desktop running list | **Satisfied** for the titled window; a second Claude window with an empty title falls to Tier 3. |
+| 6 — Three Finder windows, independent notes | **Partially satisfied.** Finder is Tier 2/3, not Tier 1 as assumed — folder-titled windows work and stay independent, but untitled Finder windows fall to Tier 3 and won't reattach across relaunch. |
+| 7 — Badge follows move/resize, disappears on close | **Satisfied.** |
+| 8 — Notes never visible to other processes | **Satisfied by construction** — encrypted at rest, no network, no screen-recording permission requested. |
+
+A story type not anticipated in v0.1: **high-churn titles** (Discord retitling per channel). Notes now follow the live window (§7.2), but a note taken on one channel is genuinely a different note from one taken on another, since the title *is* the identity.
 
 ---
 
 ## 5. High-Level Architecture
 
-Flipside is a native Swift + AppKit menu-bar-resident application built on four subsystems:
+Flipside is a native Swift + AppKit application built on four subsystems.
+
+**[as-built]** v0.1 described it as *menu-bar-resident* (`LSUIElement`, accessory activation policy, no Dock icon). It ships as a **regular Dock-visible app** with a main window, because the menu-bar status item does not render in the target environment (§16). The status item code is retained and still created at launch, in case that environment issue is resolved. Build layout is a **Swift Package** (`swift build` / `swift test`) rather than an Xcode project, assembled into a `.app` bundle by `scripts/make_app_bundle.sh`; this keeps the whole thing buildable and testable headlessly.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -101,6 +122,26 @@ No components run outside the app process. No network calls.
 | Open document path (when available) | `kAXDocumentAttribute` |
 | Move/resize/close notifications | `AXObserver` + `kAXMovedNotification`, `kAXResizedNotification`, `kAXUIElementDestroyedNotification`, `kAXWindowMiniaturizedNotification` |
 | New app launched/quit | `NSWorkspace.shared.notificationCenter` (`didLaunchApplicationNotification`, `didTerminateApplicationNotification`) |
+| **[as-built]** Window restored from minimize | `kAXWindowDeminiaturizedNotification` — v0.1 listed only the miniaturize half, leaving no way to bring a badge back |
+| **[as-built]** New window created | `kAXWindowCreatedNotification` — **essential, and missing from v0.1.** `didLaunchApplicationNotification` fires *before* an app has created any windows, so enumerating at launch finds none. Without this, a relaunched app was never picked up at all |
+| **[as-built]** Title changed | `kAXTitleChangedNotification` — required to keep a note attached as a window is retitled (§7.2) |
+| **[as-built]** Minimized state | `kAXMinimizedAttribute` — read at enumeration so a window already minimized when first seen doesn't get a stray badge |
+
+#### 6.2.1 Coordinate space conversion **[as-built]**
+
+Not mentioned in v0.1, and a source of a bug where badges were placed nowhere near their windows.
+
+The Accessibility API reports frames in **global display coordinates**: origin at the screen's **top-left**, Y increasing **downward**. AppKit's `NSWindow.setFrame`/`setFrameOrigin` expect **Cocoa screen coordinates**: origin at the **bottom-left**, Y increasing **upward**. Feeding an AX rect straight into an `NSWindow` places it at the vertically mirrored position. Every AX frame is converted before use:
+
+```
+cocoaY = NSScreen.screens[0].frame.height - axY - windowHeight
+```
+
+`NSScreen.screens[0]` is the primary screen, which is the origin of both coordinate systems.
+
+#### 6.2.2 Periodic rescan **[as-built]**
+
+AX notifications are not a complete record of reality: an app may not be Accessibility-ready when it launches (so observer registration silently fails), a window may be created before its app is observed, and windows can vanish without posting a destroyed notification. A 3-second rescan re-enumerates everything, adding windows that appeared and dropping ones that are gone. Tracking is therefore self-healing rather than dependent on every notification arriving.
 
 ### 6.3 Explicitly not used
 
@@ -140,18 +181,21 @@ This is best-effort. Titles can repeat (`Untitled`, `Untitled 2`) or change over
 
 PID and `AXUIElement` are used only for live session tracking and are never written to the database.
 
-### 7.1 Expected tier by app (target apps)
+### 7.1 Observed tier by app (target apps) **[as-built]**
 
-None of these have been empirically confirmed against Accessibility Inspector yet — that's Phase 1 work (§13) — but this is the working assumption per app, based on how each typically implements the Accessibility protocol:
+v0.1 listed *assumed* tiers pending verification. These are now the **observed** tiers, read back from real identity keys written to the encrypted database during live use — which is a stronger check than Accessibility Inspector, since it reflects the key the app actually stored. Two of the original assumptions were wrong, and one of them (Chrome) materially changed the design (§7.1.1).
 
-| App | Expected tier | Notes |
-|---|---|---|
-| Finder | Tier 1 (likely) | Finder windows commonly expose the folder location via the document attribute; **must be verified**, not assumed. |
-| VS Code | Tier 2 | No document attribute observed in practice for editor windows; window title includes the project/folder name (e.g. `myproject — Visual Studio Code`), which is fairly stable across sessions. Unsaved-file indicators (`●`) in the title should be stripped before matching. |
-| Claude (desktop) | Tier 2 | Title likely static or conversation-name-based; treat as best-effort. |
-| Docker Desktop | Tier 2, low risk | Typically a single window with a static title, so title-collision risk is minimal even without a document attribute. |
-| WhatsApp | Tier 2, low risk | Single-window app; static title, low collision risk. |
-| Chrome (any profile) | **Tier 2, with a known gap** | See §7.1.1 below — title alone cannot distinguish two profiles. |
+| App | Assumed (v0.1) | **Observed** | Notes |
+|---|---|---|---|
+| Finder | Tier 1 (likely) | **Tier 2 / Tier 3** ❌ *assumption wrong* | Finder does **not** expose the folder via the document attribute. Titled windows key on the folder name (`com.apple.finder::title::Downloads`); windows reporting no title fall to Tier 3. |
+| Chrome | Tier 2 + profile gap | **Tier 1** ❌ *assumption wrong* | Chrome exposes the **tab URL** via `kAXDocumentAttribute`, e.g. `com.google.Chrome::doc::https://staging.kolaborate.africa/jobs`. This is better than assumed (URLs are more stable than titles) but it broke the profile fix — see §7.1.1. |
+| Docker Desktop | Tier 2, low risk | **Tier 2** ✅ | Confirmed: `com.electron.dockerdesktop::title::kolaborate-macbook-air - Container - Docker Desktop`. |
+| WhatsApp | Tier 2, low risk | **Tier 2** ✅ | Confirmed: `net.whatsapp.WhatsApp::title::WhatsApp`. Static title, as predicted. |
+| Claude (desktop) | Tier 2 | **Tier 2** ✅ | Confirmed: `com.anthropic.claudefordesktop::title::Claude`. A second window with an empty title fell to Tier 3. |
+| VS Code | Tier 2 | *not yet observed* | Not running during the observation sessions. The unsaved-indicator (`●`) stripping is implemented and unit tested, but unverified against the real app. |
+| Discord | *not in v0.1* | **Tier 2, high churn** ⚠️ | Not anticipated in the original table. Title tracks the **active channel** (`#pod-soundwave | Kolaborate - Discord`), so it changes constantly during normal use. This is what exposed the identity-drift bug — see §7.2. |
+
+**The general lesson:** "does this app expose a document attribute" was guessed wrong in both directions. Any app added to this table should be verified by reading back its stored identity key, not assumed.
 
 #### 7.1.1 The Chrome profile gap
 
@@ -159,12 +203,40 @@ Bundle ID + title (Tier 2) cannot tell two Chrome windows in different profiles 
 
 - Each Chrome profile launches as its own process tree, invoked with a `--profile-directory=<Name>` command-line argument.
 - Given a tracked window's owning PID, read that process's command-line arguments (e.g. via `sysctl`/`KERN_PROCARGS2` on macOS, no elevated privileges needed for a process owned by the same user) and extract the `--profile-directory` value.
-- Extend the identity key for Chrome (and Chromium-based browsers generally) to: `{bundleIdentifier}::profile::{profileDirectory}::title::{windowTitle}`.
-- This is Chrome/Chromium-specific logic, not part of the generic Tier 1/2/3 scheme — it's a special case layered on top of Tier 2 for browser bundle IDs specifically.
+- Extend the identity key for Chrome (and Chromium-based browsers generally) to include the profile directory.
+- This is Chrome/Chromium-specific logic, not part of the generic Tier 1/2/3 scheme — it's a special case layered on top of the generic scheme for browser bundle IDs specifically.
 
 This is promoted here as a **named requirement for v1**, not deferred work, since it's one of the user's explicit primary use cases (§4, Story 1). §15 has been updated to reflect this.
 
+**[as-built] The qualifier applies to *both* tiers, not just Tier 2.** v0.1 specified this as layered on Tier 2 (`{bundle}::profile::{dir}::title::{title}`), on the assumption that Chrome was a Tier 2 app. Chrome actually resolves to **Tier 1** via the tab URL (§7.1), so a Tier-2-only qualifier was dead code — it could never take effect for the one browser it existed for, and two profiles viewing the same URL would have shared a single note. That is exactly the collision Story 1 exists to prevent, so the qualifier now scopes whichever tier applies:
+
+```
+{bundleIdentifier}::profile::{profileDirectory}::doc::{url}      # Tier 1
+{bundleIdentifier}::profile::{profileDirectory}::title::{title}  # Tier 2
+```
+
+**Default-profile caveat:** Chrome omits `--profile-directory` entirely for windows on the Default profile, so `profileDirectory` resolves to `nil` for them and they produce **unqualified** keys. This is correct and keeps existing notes matching, but it means `nil` must be treated as "no profile suffix," never as an error. As of this writing the profile-scoped path is unit tested but **not verified against a live second Chrome profile**, since only the Default profile exists on the development machine.
+
 ---
+
+### 7.2 Identity drift: following a window whose title changes **[as-built]**
+
+Not in v0.1, and the source of the most user-visible bug found during testing.
+
+A window's title is not fixed for the life of the window. Discord retitles itself on every channel switch; browsers retitle on tab change. The original design resolved the identity key **once**, when the window was first tracked, and never revisited it. The consequence: edits were written under whatever title was current when the window was *first seen*, while the UI showed the *current* title. Quitting and relaunching the app then produced a key from the new title, found no match, and presented a blank note — the note appeared lost, though it was intact in the database under the old key.
+
+**As-built behaviour:** the app subscribes to `kAXTitleChangedNotification` and re-resolves identity when the title changes, migrating the note to follow the live window. Two safeguards, because `identity_key` is UNIQUE and a naive re-key destroys data:
+
+- If the in-memory note is **empty** and a stored note already exists under the new key, the stored note is **adopted** (returning to a previously-noted title brings its note back).
+- If **both** the in-memory note and the stored note have content, the note is **not** re-keyed — overwriting would destroy one of them. It stays under its existing key.
+
+This makes Tier 2 behave as §7 intended (`last_title` is described there as "most recently seen window title" — it was never actually being maintained), but it does not make Tier 2 reliable for high-churn apps: a note attached to Discord while on one channel is keyed to that channel's title, so reopening on a different channel is genuinely a different note. That is a consequence of title-based identity, not a bug.
+
+### 7.3 Notes are written on first edit, not on sight **[as-built]**
+
+v0.1 implied a note row exists per tracked window. In practice every window ever seen got a row immediately, including a freshly-minted `session::<uuid>` row for each untitled window **on every rescan** — real usage accumulated 13 empty session rows out of 39 total within a single session, which also made the orphaned-notes list (§12 item 1) meaningless.
+
+A note is now created in memory when a window is tracked, but only written to the database once its body is non-empty. Behaviour is otherwise identical: an unwritten empty note simply isn't found on the next launch, and a fresh empty one is created.
 
 ## 8. Overlay & Flip Renderer
 
@@ -173,6 +245,12 @@ This is promoted here as a **named requirement for v1**, not deferred work, sinc
 1. **Badge window** — small (approx. 24×24pt), borderless, always-on-top `NSWindow` pinned to a corner of the tracked window. Repositioned on every `kAXMovedNotification` / `kAXResizedNotification`. This is the only UI visible when the note is not flipped open.
 2. **Card window** — full-size borderless `NSWindow`, same frame as the tracked window, shown only during and after a flip. Contains the note text view.
 
+**[as-built] The card window must opt back into keyboard focus.** `NSWindow.canBecomeKey` returns `false` for `.borderless` windows, and a window that never becomes key never receives key events — the note card showed a caret but silently swallowed everything typed. The card uses an `NSWindow` subclass overriding `canBecomeKey`/`canBecomeMain`, and is shown with `makeKeyAndOrderFront` plus `NSApp.activate`, since the target app is frontmost at the moment the badge is clicked.
+
+**[as-built] The card needs its own dismiss control.** The card spans the tracked window's full frame, which includes the corner the badge sits in — so the card covers the badge that opened it. Without a way out from the card itself, a flipped window was a dead end. The card header carries a **Done** button, Escape also dismisses, and the badge is re-ordered above the card after a flip.
+
+**[as-built] Degenerate frames are filtered.** AX reports plenty of zero-size, offscreen, and oversized windows. Frames are clamped to the screen they mostly occupy, and windows too small or entirely offscreen get no overlay at all rather than an invisible or sprawling one.
+
 ### 8.2 Flip animation
 
 - Implemented with `CATransform3D`, rotating the card window's root layer around the Y axis.
@@ -180,6 +258,10 @@ This is promoted here as a **named requirement for v1**, not deferred work, sinc
 - Animation duration target: 300–400ms, eased (e.g. `kCAMediaTimingFunctionEaseInEaseOut`).
 - Forward flip (badge click → note visible): card window fades/rotates in over the tracked window's frame.
 - Reverse flip (note visible → badge click again): card window rotates out, badge remains.
+
+**[as-built] Two-stage rotation, not a continuous 0°→180°.** The natural reading of the above — rotate the card's layer from 0° to 180° — settles the card facing the viewer **mirrored**: `CALayer.isDoubleSided` defaults to `true`, so past 90° the back face renders reversed rather than being culled. The note text came out backwards, which read as "the flip is broken / nothing is visible." The animation instead rotates **out to 90°** (edge-on, momentarily invisible — a real card looks the same from directly side-on whichever face you started from), swaps content at that exact midpoint, then rotates **back to identity**. The settled state is always right-side-up, whichever direction triggered it.
+
+Doing a true two-faced flip (a proxy "front" face showing the real window, back face showing the note) would require capturing the target window's pixels, which is explicitly a non-goal (§3, §9.4).
 
 ### 8.3 What is and isn't flipped
 
@@ -249,13 +331,18 @@ No network entitlements are requested — Flipside makes no network calls.
 
 ---
 
-## 12. Open Questions / Deferred Decisions
+## 12. Open Questions / Deferred Decisions **[as-built: resolutions recorded]**
 
 1. Should Tier 3 (unlinked, session-only) notes be discarded on app close, or retained and shown in a "orphaned notes" list for manual re-linking later? *(Leaning toward: retained, surfaced in a simple list.)*
-2. Should minimized windows keep their badge visible (e.g. shrunk into the Dock icon region) or simply hide until the window is restored? *(Leaning toward: hide, simplest for v1.)*
-3. Multiple displays: does the badge need per-display coordinate handling beyond what `AXPosition` already returns in global screen coordinates? *(Likely no extra work needed — confirm during implementation.)*
-4. Keyboard-only flip trigger (global hotkey on the frontmost window) in addition to badge click — nice-to-have, not required for v1.
-5. Should note bodies support Markdown rendering, or stay plain text for v1 simplicity? *(Leaning toward: plain text now, Markdown preview later.)*
+   → **Resolved: retained and surfaced.** A read-only orphaned-notes window lists Tier 3 notes. Manual promotion to a Tier 2 key is **not** implemented. Note that §7.3 changed what lands here: only notes with content are stored, so the list no longer fills with empty rows.
+2. Should minimized windows keep their badge visible or simply hide until the window is restored? *(Leaning toward: hide.)*
+   → **Resolved: hide**, restoring on `kAXWindowDeminiaturizedNotification`. Minimizing while flipped also resets the flip state, which would otherwise leave the state machine claiming "flipped" with a hidden card.
+3. Multiple displays: does the badge need per-display coordinate handling? *(Likely no extra work needed — confirm during implementation.)*
+   → **Resolved: extra work *was* needed**, though not for the reason anticipated. The AX↔Cocoa coordinate conversion (§6.2.1) is essential on any setup, and frames are clamped per-screen (§8.1). **Not verified on an actual multi-display setup** — the development machine is single-display.
+4. Keyboard-only flip trigger (global hotkey) — nice-to-have, not required for v1.
+   → **Not implemented.** Still open.
+5. Should note bodies support Markdown rendering, or stay plain text? *(Leaning toward: plain text now.)*
+   → **Plain text**, as planned. Consistent with §3's non-goals.
 
 ---
 
@@ -285,16 +372,27 @@ No network entitlements are requested — Flipside makes no network calls.
 **Phase 5 — Packaging**
 - Developer ID signing, notarization, DMG build script.
 
+### 13.1 Delivery status **[as-built]**
+
+| Phase | Status |
+|---|---|
+| 1 — Core mechanism | **Done**, except the Accessibility Inspector audit, which was superseded: tiers were instead confirmed by reading back stored identity keys from real use (§7.1), which reflects what the app actually persists. |
+| 2 — Flip + notes | **Done.** Core loop confirmed end-to-end: flip → type → dismiss → note persists and reappears. |
+| 3 — Persistence | **Done.** SQLCipher, Keychain key, tiered identity, and Chrome profile detection all built; Chrome profile path unit tested but not verified against a live second profile (§7.1.1). |
+| 4 — Polish | **Mostly done.** Ambiguous-match prompt, orphaned-notes list, minimize handling, and debouncing built. Multi-app/multi-window **stress testing not performed**. |
+| 5 — Packaging | **Scripted, not executed.** `make_app_bundle.sh`, `notarize.sh`, `build_dmg.sh` exist; DMG build verified. Signing and notarization require Apple Developer credentials and have not been run — the app currently ships ad-hoc signed, which has real consequences (§16). |
+
 ---
 
 ## 14. Risks
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Some apps expose incomplete or misleading Accessibility trees | Titles/documents not readable for those apps | Tier 3 fallback (session-only, user-visible as unlinked) |
-| Accessibility grant lost on rebuild during development | Repeated permission re-prompts, dev friction | Consistent Developer ID signing from early on |
-| Rapid window churn (many opens/closes in quick succession, e.g. browser tabs opening as new windows) | Badge/card windows could lag or leak | Debounce AXObserver callbacks; explicitly tear down overlays on `kAXUIElementDestroyedNotification` |
-| Full-screen or Spaces-switching apps | Badge could be misplaced across Spaces | Test explicitly in Phase 4; may need per-Space window level handling |
+| Risk | Impact | Mitigation | **[as-built] Outcome** |
+|---|---|---|---|
+| Some apps expose incomplete or misleading Accessibility trees | Titles/documents not readable for those apps | Tier 3 fallback (session-only, user-visible as unlinked) | **Materialized, as predicted.** Many windows (untitled Finder windows, widget hosts) fall to Tier 3. The Finder and Chrome tier assumptions were also both wrong (§7.1). |
+| Accessibility grant lost on rebuild during development | Repeated permission re-prompts, dev friction | Consistent Developer ID signing from early on | **Materialized, and the mitigation was unavailable** — no Developer ID credentials, so every rebuild is ad-hoc signed with a content-derived identity, and macOS treats each build as a different app. This caused repeated "the app stopped tracking windows" confusion. `scripts/uninstall.sh` clears stale grants; a real Developer ID signature is the only actual fix. |
+| Rapid window churn | Badge/card windows could lag or leak | Debounce AXObserver callbacks; tear down on `kAXUIElementDestroyedNotification` | **Mitigated.** Debouncing built. A related bug appeared and was fixed: frame updates fired for *every* tracked window on *any* window's move/resize, resetting the card mid-flip. Frame updates are now skipped when unchanged. |
+| Full-screen or Spaces-switching apps | Badge could be misplaced across Spaces | Test explicitly in Phase 4 | **Untested.** Overlay windows use `.canJoinAllSpaces`, but this has not been exercised. |
+| **[new, unforeseen]** Menu-bar status item may not render at all | No menu-bar entry point; app appears not to be running | Main window + Dock icon as the primary entry point | **Materialized.** See §16. |
 
 ---
 
@@ -303,3 +401,36 @@ No network entitlements are requested — Flipside makes no network calls.
 - Windows support (will be a separate spec; HWND-based tracking, DPAPI/Credential Manager for key storage, and Win32 overlay windows replace the AppKit/Accessibility-specific sections above).
 - Browser-profile-aware notes for browsers **other than** Chrome/Chromium (e.g. Safari, Firefox profile detection uses a different mechanism and is not covered by §7.1.1).
 - Any cloud sync, backup, or multi-device story.
+
+---
+
+## 16. Environment deviations & unresolved issues **[as-built]**
+
+New section. These are conditions of the actual target machine that changed the design, rather than choices.
+
+### 16.1 The menu-bar status item does not render
+
+On the development machine (macOS 26.6.2, Apple Silicon), an `NSStatusItem` created by this app **never becomes visible**, despite AppKit reporting success at every step — `NSStatusItemScene` is created and the FrontBoard/Control Center scene handshake completes with no errors logged.
+
+This was isolated with a **minimal standalone test app** unrelated to Flipside's codebase: a bright red status item labelled `TEST123` was equally invisible. A regular bordered `NSWindow` from the same process rendered normally. So this is not a Flipside bug and not a general windowing failure — it is specific to Control-Center-hosted status items in this environment. Root cause unknown; the leading hypothesis is a restriction on status items from ad-hoc-signed processes, which would make it a downstream consequence of §14's signing risk, but **this is unverified**.
+
+**Consequence:** the app ships Dock-visible with a main window (§1, §5). The status item code remains in place, so if the underlying cause is resolved (most plausibly by signing with a real Developer ID), the menu-bar entry point should start working with no further changes.
+
+### 16.2 Ad-hoc signing consequences
+
+Without Developer ID credentials the app is ad-hoc signed, and the signature is derived from binary content — so **every rebuild is a different identity to macOS**. This means:
+
+- Accessibility permission may need re-granting after a rebuild, and stale entries accumulate in System Settings (`scripts/uninstall.sh` clears them).
+- `spctl` assesses the app as rejected; Gatekeeper may require an explicit "Open Anyway" on first launch of a build.
+- `install_name_tool` (used to bundle SQLCipher) invalidates the signature, so the bundle **must** be re-signed afterwards or macOS kills it at launch with `Code Signature Invalid`. `make_app_bundle.sh` does this.
+
+### 16.3 Known-unverified areas
+
+Listed plainly so they aren't mistaken for tested behaviour:
+
+- Chrome per-profile notes — unit tested, never run against a live second Chrome profile.
+- Multi-display behaviour — single-display development machine only.
+- Full-screen / Spaces behaviour — untested.
+- Multi-window stress testing (Phase 4) — not performed.
+- VS Code tier and its unsaved-indicator title stripping — implemented, never observed against the real app.
+- Signing and notarization — scripted, never executed.
