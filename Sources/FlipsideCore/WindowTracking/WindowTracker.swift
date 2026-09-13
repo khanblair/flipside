@@ -10,12 +10,14 @@ public final class WindowTracker {
     // second; coalescing the resulting overlay-resync notification avoids
     // the badge/card lag called out in spec §14's risk table.
     private let moveResizeDebouncer = Debouncer(delay: 0.05)
+    private var rescanTimer: Timer?
     public var onWindowsChanged: (() -> Void)?
 
     public init() {}
 
     public func start() {
         scanAllRunningApplications()
+        startPeriodicRescan()
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(handleAppLaunched(_:)),
@@ -28,6 +30,42 @@ public final class WindowTracker {
             name: NSWorkspace.didTerminateApplicationNotification,
             object: nil
         )
+    }
+
+    /// A safety net for everything AX notifications miss: an app that wasn't
+    /// Accessibility-ready when it launched (so observer registration failed),
+    /// a window created before we started observing its app, or a window that
+    /// vanished without posting a destroyed notification. Cheap enough at this
+    /// interval for a personal-scale tool, and it makes tracking self-healing
+    /// rather than dependent on every notification arriving.
+    private func startPeriodicRescan() {
+        rescanTimer?.invalidate()
+        rescanTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.rescanAllWindows()
+            }
+        }
+    }
+
+    /// Re-enumerates every app's windows, adding ones that appeared and
+    /// dropping ones that are gone.
+    public func rescanAllWindows() {
+        var seen = Set<AXUIElement>()
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy != .prohibited {
+            guard let bundleID = app.bundleIdentifier else { continue }
+            let appName = app.localizedName ?? bundleID
+            for (axWindow, tracked) in AXWindowReader.windows(forPID: app.processIdentifier, bundleID: bundleID, appName: appName) {
+                seen.insert(axWindow)
+                registry.upsert(tracked, for: axWindow)
+            }
+            registerObserver(forPID: app.processIdentifier)
+        }
+
+        for (key, _) in registry.allKeyed() where !seen.contains(key) {
+            registry.remove(for: key)
+        }
+
+        onWindowsChanged?()
     }
 
     public func scanAllRunningApplications() {
@@ -76,7 +114,14 @@ public final class WindowTracker {
             kAXResizedNotification,
             kAXUIElementDestroyedNotification,
             kAXWindowMiniaturizedNotification,
-            kAXWindowDeminiaturizedNotification
+            kAXWindowDeminiaturizedNotification,
+            // An app posts didLaunchApplicationNotification before it has
+            // created any windows, so enumerating at launch finds nothing.
+            // Without this, a relaunched app is never picked up.
+            kAXWindowCreatedNotification,
+            // Titles change over a window's lifetime; the note attached to
+            // the window has to follow, or it ends up stored under a stale key.
+            kAXTitleChangedNotification
         ] {
             AXObserverAddNotification(observer, appElement, notification as CFString, refcon)
         }
@@ -116,6 +161,21 @@ public final class WindowTracker {
             onWindowsChanged?()
         case kAXWindowDeminiaturizedNotification:
             registry.updateMinimized(false, for: element)
+            onWindowsChanged?()
+        case kAXWindowCreatedNotification:
+            // The element is the new window; re-enumerate its app so the
+            // window (and any siblings) get picked up immediately.
+            var pid: pid_t = 0
+            guard AXUIElementGetPid(element, &pid) == .success,
+                  let app = NSRunningApplication(processIdentifier: pid),
+                  let bundleID = app.bundleIdentifier else {
+                onWindowsChanged?()
+                return
+            }
+            trackWindows(pid: pid, bundleID: bundleID, appName: app.localizedName ?? bundleID)
+            onWindowsChanged?()
+        case kAXTitleChangedNotification:
+            registry.updateTitle(AXWindowReader.title(of: element), for: element)
             onWindowsChanged?()
         default:
             onWindowsChanged?()

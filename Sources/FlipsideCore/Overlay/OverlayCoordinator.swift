@@ -114,6 +114,7 @@ public final class OverlayCoordinator {
             if let overlay = overlaysByWindow[element] {
                 overlay.updateFrame(window.frame)
                 overlay.setMinimized(window.isMinimized)
+                followIdentityChange(overlay, for: window)
             } else {
                 let note = resolveOrCreateNote(for: window)
                 let overlay = WindowOverlay(trackedWindow: window, note: note)
@@ -170,6 +171,48 @@ public final class OverlayCoordinator {
         toggleFlip(for: element)
     }
 
+    // MARK: - Identity drift
+
+    /// Keeps a live window's note attached as its title changes.
+    ///
+    /// The identity key used to be resolved once, at overlay creation, and
+    /// never revisited — so for any app whose title changes over the window's
+    /// life (a chat app switching channels, a browser switching tabs) the note
+    /// drifted out of sync: edits were written under a stale key, and on the
+    /// next launch the window's *current* title produced a different key with
+    /// no match, so the note looked lost. It wasn't — it was filed under the
+    /// old title. This follows the window instead.
+    private func followIdentityChange(_ overlay: WindowOverlay, for window: TrackedWindow) {
+        guard let resolved = WindowIdentityResolver.resolve(window) else { return }
+        guard resolved.key != overlay.note.identityKey else { return }
+
+        let existing = log { try noteRepository?.findNote(identityKey: resolved.key) } ?? nil
+
+        switch (overlay.note.body.isEmpty, existing) {
+        case (true, .some(let stored)):
+            // We're carrying nothing and the new identity already has a note:
+            // adopt it, so returning to a previously-noted title brings its
+            // note back rather than showing a blank card over it.
+            overlay.note = stored
+            overlay.card.setBody(stored.body)
+        case (false, .some(let stored)) where !stored.body.isEmpty:
+            // Both sides have content. Re-keying would overwrite the stored
+            // note (identity_key is UNIQUE), so keep ours where it is rather
+            // than destroying someone else's note.
+            return
+        default:
+            // Safe to follow: either nothing is stored under the new key, or
+            // what's there is empty.
+            overlay.note.identityKey = resolved.key
+            overlay.note.identityTier = resolved.tier
+        }
+
+        overlay.note.lastTitle = window.title
+        overlay.note.lastDocPath = window.documentPath
+        overlay.card.setTitle(WindowOverlay.cardTitle(for: window))
+        persist(overlay)
+    }
+
     // MARK: - Persistence (Task 18)
 
     private func resolveOrCreateNote(for window: TrackedWindow) -> Note {
@@ -180,13 +223,11 @@ public final class OverlayCoordinator {
         }
 
         guard let resolved = WindowIdentityResolver.resolve(window) else {
-            // Tier 3: no stable key. Still persisted (Open Questions §12 item 1:
-            // retained, not discarded) under a one-off session key so it can be
-            // surfaced later as an orphaned note (Task 20) — but it will never
-            // automatically match again on a future launch.
-            let note = Self.freshNote(for: window, identityKey: "session::\(UUID().uuidString)", tier: .session, now: now)
-            log { try repository.upsert(note) }
-            return note
+            // Tier 3: no stable key. Kept in memory now and only written once
+            // it has content (Open Questions §12 item 1: retained, not
+            // discarded) — it will never automatically match again on a
+            // future launch, but an empty one isn't worth a row.
+            return Self.freshNote(for: window, identityKey: "session::\(UUID().uuidString)", tier: .session, now: now)
         }
 
         if let existing = log({ try repository.findNote(identityKey: resolved.key) }) ?? nil {
@@ -219,13 +260,18 @@ public final class OverlayCoordinator {
             }
         }
 
-        let note = Self.freshNote(for: window, identityKey: resolved.key, tier: resolved.tier, now: now)
-        log { try repository.upsert(note) }
-        return note
+        // Written on first edit, not on sight — see persist(_:).
+        return Self.freshNote(for: window, identityKey: resolved.key, tier: resolved.tier, now: now)
     }
 
+    /// Writes the note only once it actually has content. Every window ever
+    /// seen used to get a row immediately on creation, including a freshly
+    /// minted `session::<uuid>` row for each untitled window on every scan —
+    /// which piled up dozens of empty rows and made the orphaned-notes list
+    /// meaningless. An empty note has nothing worth storing.
     private func persist(_ overlay: WindowOverlay) {
         guard let repository = noteRepository else { return }
+        guard !overlay.note.body.isEmpty else { return }
         overlay.note.updatedAt = Int64(Date().timeIntervalSince1970)
         log { try repository.upsert(overlay.note) }
     }

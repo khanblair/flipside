@@ -26,6 +26,12 @@ enum AXWindowReader {
         }
     }
 
+    /// The current title of a single window, for refreshing an already-tracked
+    /// entry when AX reports the title changed.
+    static func title(of element: AXUIElement) -> String? {
+        stringAttribute(element, kAXTitleAttribute)
+    }
+
     private static func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {

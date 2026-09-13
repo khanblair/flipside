@@ -81,6 +81,26 @@ final class WindowRegistryTests: XCTestCase {
         XCTAssertNil(removed)
     }
 
+    func testUpdateTitleMutatesOnlyTheTitleOfExistingEntry() {
+        var registry = WindowRegistry<String>()
+        let original = makeWindow(title: "#pod-soundwave | Kolaborate - Discord")
+        registry.upsert(original, for: "key-1")
+
+        registry.updateTitle("@Julie - Discord", for: "key-1")
+
+        var expected = original
+        expected.title = "@Julie - Discord"
+        XCTAssertEqual(registry.all(), [expected])
+    }
+
+    func testUpdateTitleOnMissingKeyIsANoOp() {
+        var registry = WindowRegistry<String>()
+
+        registry.updateTitle("whatever", for: "missing")
+
+        XCTAssertTrue(registry.all().isEmpty)
+    }
+
     func testUpdateMinimizedMutatesOnlyThatFlagOfExistingEntry() {
         var registry = WindowRegistry<String>()
         let original = makeWindow()

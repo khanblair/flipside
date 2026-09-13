@@ -23,6 +23,16 @@ public struct WindowRegistry<Key: Hashable> {
         windowsByKey[key] = window
     }
 
+    /// Updates only the title of the entry at `key`. No-op if `key` isn't present.
+    /// Titles change over a window's lifetime (a browser tab switch, a chat
+    /// app changing channels), and the note attached to that window has to
+    /// follow — see spec §9.2's `last_title`, "most recently seen window title".
+    public mutating func updateTitle(_ title: String?, for key: Key) {
+        guard var window = windowsByKey[key] else { return }
+        window.title = title
+        windowsByKey[key] = window
+    }
+
     /// Updates only the minimized flag of the entry at `key`. No-op if `key` isn't present.
     public mutating func updateMinimized(_ isMinimized: Bool, for key: Key) {
         guard var window = windowsByKey[key] else { return }
