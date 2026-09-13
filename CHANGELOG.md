@@ -1,6 +1,6 @@
 # Flipside — Changelog / Implementation Checklist
 
-Tracks implementation status against [flipside-spec.md](flipside-spec.md) (kept in sync — the spec is now at v0.2 "as-built"). **Current status: 56/56 unit tests passing** (`swift test`), full package + `.app` bundle assembly build clean, and the **core loop is confirmed working end-to-end**: flip a window, type a note, dismiss, and the note persists encrypted and reappears. Each item is marked:
+Tracks implementation status against [flipside-spec.md](flipside-spec.md) (kept in sync — the spec is now at v0.2 "as-built"). **Current status: 62/62 unit tests passing** (`swift test`), full package + `.app` bundle assembly build clean, and the **core loop is confirmed working end-to-end**: flip a window, type a note, dismiss, and the note persists encrypted and reappears. Each item is marked:
 
 - `[ ]` not started
 - `[~]` implemented, not yet runtime-verified (compiles / builds, but needs a live GUI session with Accessibility permission granted, or Apple Developer credentials, to actually exercise)
@@ -89,7 +89,7 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md) (kept 
 - **Menu-bar status item doesn't render** in this environment (spec §16.1) — isolated to the environment, not this codebase, via a minimal standalone test app. Root cause unknown. The Dock icon + main window is the working entry point.
 - **Chrome per-profile notes** — unit tested, never run against a live second Chrome profile (only the Default profile exists on this machine, and Default omits `--profile-directory` entirely).
 - **Multi-display** — single-display machine; per-screen clamping and coordinate conversion are implemented but unexercised.
-- **Full-screen / Spaces behaviour** — untested.
+- **Full-screen / Spaces behaviour** — now explicitly handled (spec §8.5: `.fullScreenAuxiliary`, active-Space filtering via CGWindowList, Space-change notifications), unit tested, but **never confirmed against a live full-screen app**.
 - **Multi-window stress test (Task 23)** — not performed.
 - **VS Code** — tier and unsaved-indicator (`●`) title stripping implemented and unit tested, never observed against the real app.
 - **Manual promotion of an orphaned (Tier-3) note** to a stable key — spec §7 allows for it; not implemented, the orphaned list is read-only.

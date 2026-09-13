@@ -5,7 +5,7 @@
 **Distribution:** Direct (Developer ID signed + notarized), not Mac App Store — *signing/notarization not yet performed; see §11*
 **Audience:** Personal tool, single user, single machine
 
-> **Implementation status at a glance:** Phases 1–4 (§13) are substantially built and the core loop is confirmed working end-to-end — flip a window, type a note, dismiss, and the note persists encrypted and reappears. Phase 5 (signing/notarization) is scripted but unexecuted, pending Apple Developer credentials. Current test suite: 56 unit tests passing. See `CHANGELOG.md` for per-task status.
+> **Implementation status at a glance:** Phases 1–4 (§13) are substantially built and the core loop is confirmed working end-to-end — flip a window, type a note, dismiss, and the note persists encrypted and reappears. Phase 5 (signing/notarization) is scripted but unexecuted, pending Apple Developer credentials. Current test suite: 62 unit tests passing. See `CHANGELOG.md` for per-task status.
 
 ---
 
@@ -273,6 +273,24 @@ Badge and card windows use an `NSWindow.Level` above normal application windows 
 
 ---
 
+### 8.5 Full-screen apps and Spaces **[as-built]**
+
+Barely addressed in v0.1 — §14 listed "full-screen or Spaces-switching apps" only as an untested risk. It needs real handling, because macOS full-screen is not "a bigger window": the app is moved into its **own Space**, and ordinary windows from other apps cannot appear there at all.
+
+Three things are required, and v0.1's implicit approach got the first one backwards:
+
+1. **`.fullScreenAuxiliary` collection behaviour** — the only sanctioned way for a window to join another app's full-screen Space. Overlays set it.
+2. **Not `.canJoinAllSpaces`.** The initial implementation used it, reasoning that badges should be available everywhere. That is exactly wrong for per-window overlays: it renders *every* badge on *every* Space, so badges belonging to desktop windows float over an unrelated full-screen app, attached to nothing. Overlays now use `[.fullScreenAuxiliary, .moveToActiveSpace]`, and Space membership is decided explicitly (below).
+3. **Explicit active-Space filtering.** The Accessibility API has no concept of Spaces — it reports windows from all of them simultaneously, with frames, whether or not they're on screen. So the app must determine for itself which tracked windows are currently visible. `CGWindowListCopyWindowInfo(.optionOnScreenOnly)` provides that; a tracked window is considered on the active Space when an on-screen entry matches on owning PID and approximate frame (there is no shared identifier between `AXUIElement` and `CGWindowList`, so this correlation is a heuristic, with a few points of tolerance for the two APIs disagreeing mid-animation).
+
+   This stays within §6.3's constraint: only `kCGWindowOwnerPID` and `kCGWindowBounds` are read, neither of which requires Screen Recording permission. Window *names* are never requested — that is the part which would.
+
+4. **`NSWorkspace.activeSpaceDidChangeNotification`** — switching Spaces changes what's on screen without firing any AX notification, so overlays would otherwise linger over the wrong Space. Triggers a full rescan.
+
+Additionally, frames are clamped against `NSScreen.frame` rather than `visibleFrame`: a full-screened window legitimately spans the whole screen since the menu bar auto-hides, and clamping to the menu-bar-excluding `visibleFrame` shrank its card and pushed the badge off the window's real top edge.
+
+**Unverified.** All of the above is implemented and the Space-membership logic is unit tested, but the actual behaviour of an overlay drawn over a live full-screen app has not been confirmed on a real machine. Apple restricts this area and behaviour varies by macOS version; if `.fullScreenAuxiliary` at `.floating` level proves insufficient, raising the window level is the next step.
+
 ## 9. Storage Layer
 
 ### 9.1 Database
@@ -391,7 +409,7 @@ No network entitlements are requested — Flipside makes no network calls.
 | Some apps expose incomplete or misleading Accessibility trees | Titles/documents not readable for those apps | Tier 3 fallback (session-only, user-visible as unlinked) | **Materialized, as predicted.** Many windows (untitled Finder windows, widget hosts) fall to Tier 3. The Finder and Chrome tier assumptions were also both wrong (§7.1). |
 | Accessibility grant lost on rebuild during development | Repeated permission re-prompts, dev friction | Consistent Developer ID signing from early on | **Materialized, and the mitigation was unavailable** — no Developer ID credentials, so every rebuild is ad-hoc signed with a content-derived identity, and macOS treats each build as a different app. This caused repeated "the app stopped tracking windows" confusion. `scripts/uninstall.sh` clears stale grants; a real Developer ID signature is the only actual fix. |
 | Rapid window churn | Badge/card windows could lag or leak | Debounce AXObserver callbacks; tear down on `kAXUIElementDestroyedNotification` | **Mitigated.** Debouncing built. A related bug appeared and was fixed: frame updates fired for *every* tracked window on *any* window's move/resize, resetting the card mid-flip. Frame updates are now skipped when unchanged. |
-| Full-screen or Spaces-switching apps | Badge could be misplaced across Spaces | Test explicitly in Phase 4 | **Untested.** Overlay windows use `.canJoinAllSpaces`, but this has not been exercised. |
+| Full-screen or Spaces-switching apps | Badge could be misplaced across Spaces | Test explicitly in Phase 4 | **Materialized, and the original approach was backwards.** `.canJoinAllSpaces` showed every badge on every Space rather than confining each to its window's own. Now handled explicitly — see §8.5. Still unverified against a live full-screen app. |
 | **[new, unforeseen]** Menu-bar status item may not render at all | No menu-bar entry point; app appears not to be running | Main window + Dock icon as the primary entry point | **Materialized.** See §16. |
 
 ---

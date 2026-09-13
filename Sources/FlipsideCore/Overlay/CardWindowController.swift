@@ -44,7 +44,12 @@ public final class CardWindowController: NSObject, NSTextViewDelegate {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // .fullScreenAuxiliary lets this sit over a full-screened app, which
+        // lives in its own Space. Deliberately NOT .canJoinAllSpaces: that
+        // shows the overlay on every Space, so a window on the desktop Space
+        // would have its card bleeding over an unrelated full-screen Space.
+        // Which Space it belongs on is decided per-sync via ActiveSpaceFilter.
+        window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
 
         window.contentView = buildContainer(scrollView: scrollView)
     }

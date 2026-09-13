@@ -14,6 +14,7 @@ private final class WindowOverlay {
 
     private let debugName: String
     private var hasUsableFrame = false
+    private var isOnActiveSpace = true
 
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
@@ -36,7 +37,11 @@ private final class WindowOverlay {
     }
 
     private func applyFrame(_ frame: CGRect) {
-        let screens = NSScreen.screens.map(\.visibleFrame)
+        // .frame, not .visibleFrame: a full-screened window legitimately spans
+        // the entire screen (the menu bar auto-hides), so clamping to the
+        // menu-bar-excluding visibleFrame would shrink its card and push the
+        // badge off the window's real top edge.
+        let screens = NSScreen.screens.map(\.frame)
         guard let usableFrame = CardFrameSanitizer.sanitized(frame, visibleScreenFrames: screens) else {
             // Degenerate or offscreen window (AX reports plenty of these):
             // nothing sensible to attach an overlay to. Logged so it's
@@ -81,12 +86,23 @@ private final class WindowOverlay {
         updateVisibility()
     }
 
+    /// A full-screened app lives in its own Space, and AX reports windows
+    /// from every Space regardless of which is on screen — so an overlay must
+    /// be hidden while its window is on a Space the user isn't looking at,
+    /// or it floats over unrelated content attached to nothing.
+    func setOnActiveSpace(_ onActiveSpace: Bool) {
+        guard onActiveSpace != isOnActiveSpace else { return }
+        isOnActiveSpace = onActiveSpace
+        updateVisibility()
+    }
+
     /// Single place that decides whether the overlay is on screen: the badge
-    /// shows whenever the window has a usable frame and isn't minimized.
-    /// The card is never shown from here — it appears only via an explicit
-    /// flip — but it is hidden alongside the badge.
+    /// shows whenever the window has a usable frame, isn't minimized, and is
+    /// on the Space currently being viewed. The card is never shown from here
+    /// — it appears only via an explicit flip — but it is hidden alongside
+    /// the badge.
     private func updateVisibility() {
-        if hasUsableFrame && !isMinimized {
+        if hasUsableFrame && !isMinimized && isOnActiveSpace {
             badge.show()
         } else {
             badge.hide()
@@ -129,12 +145,21 @@ public final class OverlayCoordinator {
     private func syncOverlays() {
         let keyed = tracker.currentWindowsKeyed()
         var seen = Set<AXUIElement>()
+        // Read once per sync rather than per window — this is a system-wide
+        // snapshot of what's composited on the Space currently being viewed.
+        let onScreenWindows = OnScreenWindowReader.onScreenWindows()
 
         for (element, window) in keyed {
             seen.insert(element)
+            let onActiveSpace = ActiveSpaceFilter.isOnActiveSpace(
+                pid: window.pid,
+                frame: window.frame,
+                onScreenWindows: onScreenWindows
+            )
             if let overlay = overlaysByWindow[element] {
                 overlay.updateFrame(window.frame)
                 overlay.setMinimized(window.isMinimized)
+                overlay.setOnActiveSpace(onActiveSpace)
                 followIdentityChange(overlay, for: window)
             } else {
                 let note = resolveOrCreateNote(for: window)
@@ -143,6 +168,7 @@ public final class OverlayCoordinator {
                 // The card covers the whole tracked window, badge included,
                 // so it must also be dismissible from itself.
                 overlay.card.onClose = { [weak self] in self?.flipBackIfNeeded(for: element) }
+                overlay.setOnActiveSpace(onActiveSpace)
                 overlaysByWindow[element] = overlay
             }
         }

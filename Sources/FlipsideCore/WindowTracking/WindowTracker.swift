@@ -30,6 +30,16 @@ public final class WindowTracker {
             name: NSWorkspace.didTerminateApplicationNotification,
             object: nil
         )
+        // Switching Spaces — including in and out of a full-screened app,
+        // which occupies its own Space — changes which windows are actually
+        // on screen without any AX notification firing. Overlays have to be
+        // re-evaluated or they linger over the wrong Space.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleActiveSpaceChanged),
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil
+        )
     }
 
     /// A safety net for everything AX notifications miss: an app that wasn't
@@ -187,6 +197,13 @@ public final class WindowTracker {
               let bundleID = app.bundleIdentifier else { return }
         trackWindows(pid: app.processIdentifier, bundleID: bundleID, appName: app.localizedName ?? bundleID)
         onWindowsChanged?()
+    }
+
+    @objc private func handleActiveSpaceChanged() {
+        // A full-screened window's frame can also change as it enters or
+        // leaves its Space, so re-enumerate rather than only re-evaluating
+        // visibility.
+        rescanAllWindows()
     }
 
     @objc private func handleAppTerminated(_ notification: Notification) {

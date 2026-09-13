@@ -30,7 +30,12 @@ public final class BadgeWindowController {
         window.backgroundColor = .clear
         window.hasShadow = true
         window.ignoresMouseEvents = false
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // .fullScreenAuxiliary lets this sit over a full-screened app, which
+        // lives in its own Space. Deliberately NOT .canJoinAllSpaces: that
+        // shows the overlay on every Space, so a window on the desktop Space
+        // would have its badge bleeding over an unrelated full-screen Space.
+        // Which Space it belongs on is decided per-sync via ActiveSpaceFilter.
+        window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
 
         let button = NSButton(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
         button.title = ""
