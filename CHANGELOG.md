@@ -83,6 +83,10 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md) (kept 
 - **Chrome per-profile notes were dead code.** The profile qualifier was only applied on the Tier 2 path, but Chrome resolves to Tier 1 via the tab URL — so it could never take effect for the one browser it existed for, and two profiles on the same URL would have shared a note (the exact collision spec Story 1 exists to prevent). The qualifier now scopes whichever tier applies (spec §7.1.1).
 
 
+### Added after live testing
+
+- **⌃⌥F flips whichever window is in front** (spec §12 item 4, previously listed as a nice-to-have). This came from the user reporting that a badge on every window cluttered the screen. Plain single-click on the title bar was rejected, since that click is how you focus and drag a window and, in Chrome, how you switch tabs. The shortcut uses Carbon's `RegisterEventHotKey`, which needs no permission, fires whichever app is in front, and consumes the keystroke. An `NSEvent` global monitor can't do any of those three. If a card is already open, the shortcut flips that card back. Flipping back now also returns focus to the owning app, for the badge and Done paths too; before this a round trip left nothing focused. The main window shows the shortcut, or says it's unavailable if another app already owns ⌃⌥F. Not yet confirmed live.
+
 ## Known gaps and unverified areas
 
 - **Signing & notarization (Task 25)** — scripted, never executed; needs an Apple Developer ID certificate. This is upstream of several other problems: ad-hoc signing is why permission grants keep resetting, why Gatekeeper flags the app, and possibly why the menu-bar status item never renders (spec §16).

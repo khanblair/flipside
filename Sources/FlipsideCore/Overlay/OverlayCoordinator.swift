@@ -13,11 +13,15 @@ private final class WindowOverlay {
     private var lastFrame: CGRect
 
     private let debugName: String
-    private var hasUsableFrame = false
+    /// Owning process of the tracked window, so focus can be handed back to it
+    /// after flipping back — see toggleFlip(for:).
+    let ownerPID: pid_t
+    private(set) var hasUsableFrame = false
     private var isOnActiveSpace = true
 
     init(trackedWindow: TrackedWindow, note: Note) {
         self.note = note
+        self.ownerPID = trackedWindow.pid
         self.lastFrame = trackedWindow.frame
         self.debugName = Self.cardTitle(for: trackedWindow)
         self.isMinimized = trackedWindow.isMinimized
@@ -187,6 +191,9 @@ public final class OverlayCoordinator {
     /// a reliable trigger to click.
     public func toggleFlip(for element: AXUIElement) {
         guard let overlay = overlaysByWindow[element], !overlay.isMinimized else { return }
+        // Opening needs somewhere sensible to put the card; closing must always
+        // be allowed, so a card can never get stuck open.
+        guard overlay.stateMachine.state == .back || overlay.hasUsableFrame else { return }
         let newState = overlay.stateMachine.toggle()
 
         switch newState {
@@ -206,8 +213,42 @@ public final class OverlayCoordinator {
                 self?.persist(overlay)
             }, completion: { [weak overlay] in
                 overlay?.card.hide()
+                // Hand focus back to the app the note belongs to. Showing the
+                // card activated Flipside so it could take typing; without
+                // this, flipping back leaves no window focused, and a second
+                // ⌃⌥F would find Flipside frontmost with nothing to flip.
+                if let pid = overlay?.ownerPID {
+                    NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+                }
             })
         }
+    }
+
+    /// Keyboard-shortcut entry point: flips whichever window is in front.
+    ///
+    /// If a note card is already open, that card is flipped back instead.
+    /// Showing a card activates Flipside so the card can take typing, so at
+    /// that moment Flipside itself is the frontmost app — not the window the
+    /// note belongs to.
+    public func toggleFlipForFrontmostWindow() {
+        let flippedOpen = overlaysByWindow.filter { $0.value.stateMachine.state == .back }
+        if let open = flippedOpen.first(where: { $0.value.card.window.isKeyWindow }) ?? flippedOpen.first {
+            toggleFlip(for: open.key)
+            return
+        }
+
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let focusedWindow = AXWindowReader.focusedWindow(ofPID: app.processIdentifier) else {
+            return
+        }
+
+        if overlaysByWindow[focusedWindow] == nil {
+            // A window opened moments ago may not be tracked yet. The rescan
+            // syncs overlays synchronously, so it's available on the next line.
+            tracker.rescanAllWindows()
+        }
+        toggleFlip(for: focusedWindow)
     }
 
     /// Flips a card back to the front if it's currently showing. Used by the

@@ -358,7 +358,12 @@ No network entitlements are requested — Flipside makes no network calls.
 3. Multiple displays: does the badge need per-display coordinate handling? *(Likely no extra work needed — confirm during implementation.)*
    → **Resolved: extra work *was* needed**, though not for the reason anticipated. The AX↔Cocoa coordinate conversion (§6.2.1) is essential on any setup, and frames are clamped per-screen (§8.1). **Not verified on an actual multi-display setup** — the development machine is single-display.
 4. Keyboard-only flip trigger (global hotkey) — nice-to-have, not required for v1.
-   → **Not implemented.** Still open.
+   → **Implemented: ⌃⌥F flips whichever window is in front.** Added after live use, because a corner badge on every window read as clutter. A plain single click on a window's title bar was considered and rejected: a single click there is how a window gets focused and how every drag starts, and in Chrome the title bar *is* the tab strip, so it would fire constantly.
+   - Registered with Carbon's `RegisterEventHotKey`, not an `NSEvent` global monitor. A global monitor can only observe (the frontmost app would also receive ⌃⌥F), doesn't fire while Flipside itself is frontmost, and needs Input Monitoring permission. A registered hot key needs no permission, fires whichever app is in front, and consumes the keystroke.
+   - Pressing it while a note card is open flips *that card* back. Showing a card activates Flipside so the card can take typing, which means Flipside is the frontmost app at that point, not the window the note belongs to.
+   - Flipping back hands focus back to the owning app. Without this, a round trip left no window focused, and a second ⌃⌥F found Flipside frontmost with nothing to flip.
+   - If another app already owns ⌃⌥F, registration fails and the main window says so rather than silently doing nothing.
+   - **Unverified live:** the targeting depends on the focused-window `AXUIElement` comparing equal to the one captured during enumeration, which should hold (both resolve to the same element via `CFEqual`) but hasn't been confirmed on a real machine. Badges remain in place; hiding them is a separate decision.
 5. Should note bodies support Markdown rendering, or stay plain text? *(Leaning toward: plain text now.)*
    → **Plain text**, as planned. Consistent with §3's non-goals.
 

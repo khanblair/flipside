@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import FlipsideCore
 import Foundation
 
@@ -10,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var noteRepository: NoteRepository?
     private var orphanedNotesWindowController: OrphanedNotesWindowController?
     private var mainWindowController: MainWindowController?
+    // Held for the app's lifetime: the Carbon handler refers back to it.
+    private var flipHotKey: GlobalHotKey?
+    private var shortcutHint = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Flipside is a menu-bar-only accessory app: it never has a regular
@@ -51,6 +55,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayCoordinator = coordinator
         coordinator.start()
 
+        // ⌃⌥F flips whichever window is in front (spec §12 item 4).
+        flipHotKey = GlobalHotKey(
+            keyCode: UInt32(kVK_ANSI_F),
+            modifiers: UInt32(controlKey | optionKey)
+        ) { [weak self] in
+            self?.overlayCoordinator?.toggleFlipForFrontmostWindow()
+        }
+        shortcutHint = flipHotKey == nil
+            ? "⌃⌥F unavailable: another app is using it"
+            : "Press ⌃⌥F to flip the window in front"
+
         showMainWindow()
     }
 
@@ -66,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.onShowOrphanedNotes = { [weak self] in self?.showOrphanedNotes() }
         controller.onFlipWindow = { [weak self] element in self?.overlayCoordinator?.toggleFlip(for: element) }
         controller.onQuit = { NSApp.terminate(nil) }
+        controller.setShortcutHint(shortcutHint)
         mainWindowController = controller
         controller.refresh()
         controller.show()

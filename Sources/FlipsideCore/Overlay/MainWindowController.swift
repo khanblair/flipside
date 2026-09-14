@@ -13,6 +13,7 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
     private let tracker: WindowTracker
     private let tableView = NSTableView()
     private let statusLabel = NSTextField(labelWithString: "")
+    private let shortcutHintLabel = NSTextField(labelWithString: "")
     private var refreshTimer: Timer?
     private var trackedWindowsKeyed: [(AXUIElement, TrackedWindow)] = []
 
@@ -60,6 +61,12 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         tableView.reloadData()
     }
 
+    /// Shown top-right, beside the title: tells the user the keyboard
+    /// shortcut exists, or that registering it failed.
+    public func setShortcutHint(_ text: String) {
+        shortcutHintLabel.stringValue = text
+    }
+
     private func startAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -86,6 +93,13 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        shortcutHintLabel.font = .systemFont(ofSize: 11)
+        shortcutHintLabel.textColor = .secondaryLabelColor
+        shortcutHintLabel.alignment = .right
+        shortcutHintLabel.lineBreakMode = .byTruncatingTail
+        shortcutHintLabel.translatesAutoresizingMaskIntoConstraints = false
+        shortcutHintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("trackedWindow"))
         column.title = "App — Window"
@@ -119,6 +133,7 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         container.addSubview(iconView)
         container.addSubview(titleLabel)
         container.addSubview(statusLabel)
+        container.addSubview(shortcutHintLabel)
         container.addSubview(scrollView)
         container.addSubview(buttonStack)
 
@@ -133,6 +148,10 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
 
             statusLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
             statusLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+
+            shortcutHintLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            shortcutHintLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            shortcutHintLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 12),
 
             scrollView.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 12),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),

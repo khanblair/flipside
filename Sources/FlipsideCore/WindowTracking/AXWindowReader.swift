@@ -32,6 +32,19 @@ enum AXWindowReader {
         stringAttribute(element, kAXTitleAttribute)
     }
 
+    /// The window that currently has keyboard focus in the given app — the
+    /// target of the "flip the window in front" shortcut.
+    static func focusedWindow(ofPID pid: pid_t) -> AXUIElement? {
+        let appElement = AXUIElementCreateApplication(pid)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return (value as! AXUIElement)
+    }
+
     private static func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
