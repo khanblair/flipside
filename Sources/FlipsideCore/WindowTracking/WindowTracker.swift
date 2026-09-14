@@ -61,7 +61,7 @@ public final class WindowTracker {
     /// dropping ones that are gone.
     public func rescanAllWindows() {
         var seen = Set<AXUIElement>()
-        for app in NSWorkspace.shared.runningApplications where app.activationPolicy != .prohibited {
+        for app in NSWorkspace.shared.runningApplications where Self.shouldTrack(app) {
             guard let bundleID = app.bundleIdentifier else { continue }
             let appName = app.localizedName ?? bundleID
             for (axWindow, tracked) in AXWindowReader.windows(forPID: app.processIdentifier, bundleID: bundleID, appName: appName) {
@@ -79,7 +79,7 @@ public final class WindowTracker {
     }
 
     public func scanAllRunningApplications() {
-        for app in NSWorkspace.shared.runningApplications where app.activationPolicy != .prohibited {
+        for app in NSWorkspace.shared.runningApplications where Self.shouldTrack(app) {
             guard let bundleID = app.bundleIdentifier else { continue }
             trackWindows(pid: app.processIdentifier, bundleID: bundleID, appName: app.localizedName ?? bundleID)
         }
@@ -96,6 +96,14 @@ public final class WindowTracker {
     /// can't tell two windows with identical field values apart.
     public func currentWindowsKeyed() -> [(AXUIElement, TrackedWindow)] {
         registry.allKeyed()
+    }
+
+    /// Every app with windows, except Flipside itself: its badge and card
+    /// overlays are windows too, and tracking them gave overlays badges of
+    /// their own and listed them as "Flipside —" rows in the main window.
+    private static func shouldTrack(_ app: NSRunningApplication) -> Bool {
+        app.activationPolicy != .prohibited
+            && app.processIdentifier != ProcessInfo.processInfo.processIdentifier
     }
 
     private func trackWindows(pid: pid_t, bundleID: String, appName: String) {

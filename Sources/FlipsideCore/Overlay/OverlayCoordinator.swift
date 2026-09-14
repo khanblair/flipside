@@ -18,9 +18,11 @@ private final class WindowOverlay {
     let ownerPID: pid_t
     private(set) var hasUsableFrame = false
     private var isOnActiveSpace = true
+    private(set) var badgeEnabled: Bool
 
-    init(trackedWindow: TrackedWindow, note: Note) {
+    init(trackedWindow: TrackedWindow, note: Note, badgeEnabled: Bool) {
         self.note = note
+        self.badgeEnabled = badgeEnabled
         self.ownerPID = trackedWindow.pid
         self.lastFrame = trackedWindow.frame
         self.debugName = Self.cardTitle(for: trackedWindow)
@@ -100,14 +102,21 @@ private final class WindowOverlay {
         updateVisibility()
     }
 
+    func setBadgeEnabled(_ enabled: Bool) {
+        guard enabled != badgeEnabled else { return }
+        badgeEnabled = enabled
+        updateVisibility()
+    }
+
     /// Single place that decides whether the overlay is on screen: the badge
     /// shows whenever the window has a usable frame, isn't minimized, and is
-    /// on the Space currently being viewed. The card is never shown from here
+    /// on the Space currently being viewed, as long as badges are switched
+    /// on. The card is never shown from here
     /// — it appears only via an explicit flip — but it is hidden alongside
     /// the badge.
     private func updateVisibility() {
         if hasUsableFrame && !isMinimized && isOnActiveSpace {
-            badge.show()
+            if badgeEnabled { badge.show() } else { badge.hide() }
         } else {
             badge.hide()
             card.hide()
@@ -134,6 +143,17 @@ public final class OverlayCoordinator {
     private var overlaysByWindow: [AXUIElement: WindowOverlay] = [:]
     private let flipDuration: CFTimeInterval = 0.35
     private let perspectiveDistance: CGFloat = 1000
+
+    /// Corner badges on every tracked window (spec §8.1). Off by default:
+    /// with ⌃⌥F and the main window's Flip buttons, a badge on every window
+    /// was clutter. A card still opens and closes fine without one.
+    public var badgesEnabled = false {
+        didSet {
+            for overlay in overlaysByWindow.values {
+                overlay.setBadgeEnabled(badgesEnabled)
+            }
+        }
+    }
 
     public init(tracker: WindowTracker, noteRepository: NoteRepository? = nil) {
         self.tracker = tracker
@@ -167,7 +187,7 @@ public final class OverlayCoordinator {
                 followIdentityChange(overlay, for: window)
             } else {
                 let note = resolveOrCreateNote(for: window)
-                let overlay = WindowOverlay(trackedWindow: window, note: note)
+                let overlay = WindowOverlay(trackedWindow: window, note: note, badgeEnabled: badgesEnabled)
                 overlay.badge.onBadgeClicked = { [weak self] in self?.toggleFlip(for: element) }
                 // The card covers the whole tracked window, badge included,
                 // so it must also be dismissible from itself.
@@ -203,9 +223,9 @@ public final class OverlayCoordinator {
                 overlay.card.setBody(overlay.note.body)
             }, completion: {
                 // Keep the badge above the card: the card spans the whole
-                // tracked window, so without this the badge that triggered
-                // the flip ends up buried underneath it.
-                overlay.badge.show()
+                // tracked window, so without this the badge ends up buried
+                // underneath it.
+                if overlay.badgeEnabled { overlay.badge.show() }
             })
         case .front:
             animateFlip(overlay.card.window, swapContent: { [weak self] in

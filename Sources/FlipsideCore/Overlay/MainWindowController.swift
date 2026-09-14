@@ -14,11 +14,14 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
     private let tableView = NSTableView()
     private let statusLabel = NSTextField(labelWithString: "")
     private let shortcutHintLabel = NSTextField(labelWithString: "")
+    private let badgesButton = NSButton(title: "Show Badges", target: nil, action: nil)
+    private var badgesEnabled = false
     private var refreshTimer: Timer?
     private var trackedWindowsKeyed: [(AXUIElement, TrackedWindow)] = []
 
     public var onShowOrphanedNotes: (() -> Void)?
     public var onFlipWindow: ((AXUIElement) -> Void)?
+    public var onBadgesToggled: ((Bool) -> Void)?
     public var onQuit: (() -> Void)?
 
     public init(tracker: WindowTracker) {
@@ -30,7 +33,7 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
             defer: false
         )
         window.title = "Flipside"
-        window.minSize = NSSize(width: 420, height: 320)
+        window.minSize = NSSize(width: 520, height: 320)
         // See BadgeWindowController: AppDelegate caches this controller and
         // reuses it across show() calls, so the default (true) would
         // double-release the window once the user closes it and the
@@ -59,6 +62,12 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
             ? "Flipside is running. No windows tracked yet."
             : "Flipside is running. Tracking \(trackedWindowsKeyed.count) window(s):"
         tableView.reloadData()
+    }
+
+    /// The button offers the opposite of the current state.
+    public func setBadgesEnabled(_ enabled: Bool) {
+        badgesEnabled = enabled
+        badgesButton.title = enabled ? "Hide Badges" : "Show Badges"
     }
 
     /// Shown top-right, beside the title: tells the user the keyboard
@@ -119,12 +128,14 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         let refreshButton = NSButton(title: "Refresh", target: self, action: #selector(refreshClicked))
         let orphanedButton = NSButton(title: "Orphaned Notes…", target: self, action: #selector(orphanedNotesClicked))
         let quitButton = NSButton(title: "Quit Flipside", target: self, action: #selector(quitClicked))
-        for button in [refreshButton, orphanedButton, quitButton] {
+        badgesButton.target = self
+        badgesButton.action = #selector(badgesButtonClicked)
+        for button in [refreshButton, orphanedButton, badgesButton, quitButton] {
             button.bezelStyle = .rounded
             button.translatesAutoresizingMaskIntoConstraints = false
         }
 
-        let buttonStack = NSStackView(views: [refreshButton, orphanedButton, quitButton])
+        let buttonStack = NSStackView(views: [refreshButton, orphanedButton, badgesButton, quitButton])
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
@@ -211,6 +222,11 @@ public final class MainWindowController: NSWindowController, NSTableViewDataSour
         guard sender.tag < trackedWindowsKeyed.count else { return }
         let (element, _) = trackedWindowsKeyed[sender.tag]
         onFlipWindow?(element)
+    }
+
+    @objc private func badgesButtonClicked() {
+        setBadgesEnabled(!badgesEnabled)
+        onBadgesToggled?(badgesEnabled)
     }
 
     @objc private func refreshClicked() {

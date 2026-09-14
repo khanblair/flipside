@@ -87,10 +87,13 @@ Tracks implementation status against [flipside-spec.md](flipside-spec.md) (kept 
 
 - **⌃⌥F flips whichever window is in front** (spec §12 item 4, previously listed as a nice-to-have). This came from the user reporting that a badge on every window cluttered the screen. Plain single-click on the title bar was rejected, since that click is how you focus and drag a window and, in Chrome, how you switch tabs. The shortcut uses Carbon's `RegisterEventHotKey`, which needs no permission, fires whichever app is in front, and consumes the keystroke. An `NSEvent` global monitor can't do any of those three. If a card is already open, the shortcut flips that card back. Flipping back now also returns focus to the owning app, for the badge and Done paths too; before this a round trip left nothing focused. The main window shows the shortcut, or says it's unavailable if another app already owns ⌃⌥F. Not yet confirmed live.
 
+- **Badges are off by default, with a Show Badges / Hide Badges button** in the main window. The choice is saved across launches. This came from the user finding a badge on every window cluttered.
+- **Fixed: Flipside was tracking its own windows.** Its badge and card overlays are windows too, so they appeared as `Flipside —` rows in the main window (5 of 20 tracked windows in one screenshot) and got badges of their own. Flipside's own process is now excluded from enumeration.
+
 ## Known gaps and unverified areas
 
 - **Signing & notarization (Task 25)** — scripted, never executed; needs an Apple Developer ID certificate. This is upstream of several other problems: ad-hoc signing is why permission grants keep resetting, why Gatekeeper flags the app, and possibly why the menu-bar status item never renders (spec §16).
-- **Menu-bar status item doesn't render** in this environment (spec §16.1) — isolated to the environment, not this codebase, via a minimal standalone test app. Root cause unknown. The Dock icon + main window is the working entry point.
+- **Menu-bar status item rendering is unreliable** (spec §16.1). It never appeared in the first sessions, including in a minimal standalone test app, but was seen rendering on 2026-09-14 with no code change. Cause unknown. The Dock icon and main window stay the primary entry point.
 - **Chrome per-profile notes** — unit tested, never run against a live second Chrome profile (only the Default profile exists on this machine, and Default omits `--profile-directory` entirely).
 - **Multi-display** — single-display machine; per-screen clamping and coordinate conversion are implemented but unexercised.
 - **Full-screen / Spaces behaviour** — now explicitly handled (spec §8.5: `.fullScreenAuxiliary`, active-Space filtering via CGWindowList, Space-change notifications), unit tested, but **never confirmed against a live full-screen app**.

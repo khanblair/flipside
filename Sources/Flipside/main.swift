@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Held for the app's lifetime: the Carbon handler refers back to it.
     private var flipHotKey: GlobalHotKey?
     private var shortcutHint = ""
+    private static let showsBadgesKey = "showsBadges"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Flipside is a menu-bar-only accessory app: it never has a regular
@@ -53,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let coordinator = OverlayCoordinator(tracker: tracker, noteRepository: repository)
         overlayCoordinator = coordinator
+        coordinator.badgesEnabled = UserDefaults.standard.bool(forKey: Self.showsBadgesKey)
         coordinator.start()
 
         // ⌃⌥F flips whichever window is in front (spec §12 item 4).
@@ -82,6 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.onFlipWindow = { [weak self] element in self?.overlayCoordinator?.toggleFlip(for: element) }
         controller.onQuit = { NSApp.terminate(nil) }
         controller.setShortcutHint(shortcutHint)
+        controller.setBadgesEnabled(overlayCoordinator?.badgesEnabled ?? false)
+        controller.onBadgesToggled = { [weak self] enabled in
+            UserDefaults.standard.set(enabled, forKey: Self.showsBadgesKey)
+            self?.overlayCoordinator?.badgesEnabled = enabled
+        }
         mainWindowController = controller
         controller.refresh()
         controller.show()

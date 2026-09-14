@@ -17,6 +17,8 @@ The core idea: turn every open window into a two-sided object — front is the a
 
 **[as-built]** In addition to the per-window badges, the app has a **main window** listing every tracked window, with a "Flip" button per row and access to the orphaned-notes list. This was not in the original design — v0.1 assumed a menu-bar-only accessory app with no window of its own (§5). It was added because the menu-bar status item does not render on the development machine (see §16), leaving no reliable way to see whether the app was running or to reach its controls. It has since proven useful in its own right as a way to see what's being tracked.
 
+**[as-built]** Corner badges are **off by default**, with a Show Badges / Hide Badges button in the main window. The choice persists across launches. Once ⌃⌥F (§12 item 4) and the main window's Flip buttons existed, a badge on every tracked window was clutter.
+
 ---
 
 ## 2. Goals
@@ -363,7 +365,7 @@ No network entitlements are requested — Flipside makes no network calls.
    - Pressing it while a note card is open flips *that card* back. Showing a card activates Flipside so the card can take typing, which means Flipside is the frontmost app at that point, not the window the note belongs to.
    - Flipping back hands focus back to the owning app. Without this, a round trip left no window focused, and a second ⌃⌥F found Flipside frontmost with nothing to flip.
    - If another app already owns ⌃⌥F, registration fails and the main window says so rather than silently doing nothing.
-   - **Unverified live:** the targeting depends on the focused-window `AXUIElement` comparing equal to the one captured during enumeration, which should hold (both resolve to the same element via `CFEqual`) but hasn't been confirmed on a real machine. Badges remain in place; hiding them is a separate decision.
+   - **Unverified live:** the targeting depends on the focused-window `AXUIElement` comparing equal to the one captured during enumeration, which should hold (both resolve to the same element via `CFEqual`) but hasn't been confirmed on a real machine. Badges were later switched off by default, with a toggle in the main window (§1).
 5. Should note bodies support Markdown rendering, or stay plain text? *(Leaning toward: plain text now.)*
    → **Plain text**, as planned. Consistent with §3's non-goals.
 
@@ -436,6 +438,8 @@ New section. These are conditions of the actual target machine that changed the 
 On the development machine (macOS 26.6.2, Apple Silicon), an `NSStatusItem` created by this app **never becomes visible**, despite AppKit reporting success at every step — `NSStatusItemScene` is created and the FrontBoard/Control Center scene handshake completes with no errors logged.
 
 This was isolated with a **minimal standalone test app** unrelated to Flipside's codebase: a bright red status item labelled `TEST123` was equally invisible. A regular bordered `NSWindow` from the same process rendered normally. So this is not a Flipside bug and not a general windowing failure — it is specific to Control-Center-hosted status items in this environment. Root cause unknown; the leading hypothesis is a restriction on status items from ad-hoc-signed processes, which would make it a downstream consequence of §14's signing risk, but **this is unverified**.
+
+**Update, 2026-09-14:** a later screenshot from the user shows the status item rendering in the menu bar, as a note icon titled "Flip". Nothing in the status item code changed in between, so the cause of the earlier invisibility is still unknown. It may depend on menu bar crowding or on how the process was launched.
 
 **Consequence:** the app ships Dock-visible with a main window (§1, §5). The status item code remains in place, so if the underlying cause is resolved (most plausibly by signing with a real Developer ID), the menu-bar entry point should start working with no further changes.
 
